@@ -7,7 +7,7 @@ import SearchOverlay from './SearchOverlay';
 import { getTheme, ThemeName } from '../themes';
 import { useKeybindings } from '../KeybindingsContext';
 import { matchesShortcut } from '../keybindings';
-import { createOsc7State, parseChunk } from '../osc7';
+import { fileUrlToPath } from '../osc7';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalPaneProps {
@@ -212,35 +212,53 @@ export default function TerminalPane({
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
 
-    // OSC 7 parser: this terminal's per-instance state. The parser
-    // strips the escape from the data we send to xterm and surfaces the
-    // cwd to the App via `onCwdChange`.
-    const osc7 = createOsc7State();
-    if (initialCwd) {
-      osc7.lastCwd = initialCwd;
-    }
-    // Debounce cwd updates so a flurry of OSC 7 sequences (e.g. a script
-    // that cd's many times) doesn't reload the file tree on every one.
+    // OSC 7 cwd tracking. xterm.js has a built-in OSC parser
+    // (term.parser) that detects sequences for us, reassembles them
+    // across PTY chunk boundaries, and strips them from the visible
+    // output. We just register a handler for OSC 7 and react to the
+    // payload.
+    //
+    // Reference:
+    //   https://xtermjs.org/docs/api/terminal/interfaces/iparser/#registeroschandler
+    //
+    // The "initialCwd" prop is what node-pty was launched with
+    // (typically the user's home dir). We report it eagerly so the
+    // sidebar has something to show before the first prompt emits an
+    // OSC 7 sequence.
+    let lastReportedCwd: string | null = initialCwd || null;
+    if (initialCwd) onCwdChange?.(termId, initialCwd);
+
+    // Debounce so a burst of OSC 7 sequences (e.g. a script that cd's
+    // many times, or a tab completion that paints a path) doesn't
+    // thrash the file tree.
     let cwdDebounce: ReturnType<typeof setTimeout> | null = null;
     const reportCwd = (newCwd: string) => {
-      if (newCwd === osc7.lastCwd) return;
-      osc7.lastCwd = newCwd;
+      if (newCwd === lastReportedCwd) return;
+      lastReportedCwd = newCwd;
       if (cwdDebounce) clearTimeout(cwdDebounce);
       cwdDebounce = setTimeout(() => {
         onCwdChange?.(termId, newCwd);
       }, 80);
     };
 
-    // PTY output -> xterm (with OSC 7 stripped)
+    const oscDisposable = term.parser.registerOscHandler(7, (data) => {
+      const path = fileUrlToPath(data);
+      if (path) reportCwd(path);
+      return true; // consumed — don't let xterm render the payload
+    });
+    cleanupRef.current.push(oscDisposable);
+    cleanupRef.current.push(() => {
+      if (cwdDebounce) clearTimeout(cwdDebounce);
+    });
+
+    // PTY output -> xterm (no longer needs to strip OSC 7 — xterm
+    // consumes it before it ever reaches the visible buffer).
     const cleanupListener = window.jterm.onTerminalData(({ id, data }) => {
       if (id === termId) {
-        const { visible, cwd } = parseChunk(osc7, data);
-        if (visible) term.write(visible);
-        if (cwd) reportCwd(cwd);
+        term.write(data);
       }
     });
     cleanupRef.current.push(cleanupListener);
-    cleanupRef.current.push(() => { if (cwdDebounce) clearTimeout(cwdDebounce); });
 
     // Intercept keyboard shortcuts before xterm processes them
     term.attachCustomKeyEventHandler((e) => {
