@@ -1,6 +1,29 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+
+/**
+ * Run a list of cleanup entries. Each entry is either a function (called
+ * with no args) or an object with a `.dispose()` method (called). Errors
+ * are swallowed because a failing cleanup shouldn't mask the real reason
+ * the component is unmounting.
+ *
+ * Exported for testing. We can't easily test the TerminalPane unmount
+ * path because it requires a real xterm.js instance, but the cleanup
+ * contract itself is simple and worth pinning down.
+ */
+export function runCleanup(entries: unknown[]): void {
+  for (const entry of entries) {
+    try {
+      if (typeof entry === 'function') entry();
+      else if (entry && typeof (entry as { dispose?: () => void }).dispose === 'function') {
+        (entry as { dispose: () => void }).dispose();
+      }
+    } catch (e) {
+      console.warn('[JTerm] cleanup error:', e);
+    }
+  }
+}
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import SearchOverlay from './SearchOverlay';
@@ -246,7 +269,7 @@ export default function TerminalPane({
       if (path) reportCwd(path);
       return true; // consumed — don't let xterm render the payload
     });
-    cleanupRef.current.push(oscDisposable);
+    cleanupRef.current.push(() => oscDisposable.dispose());
     cleanupRef.current.push(() => {
       if (cwdDebounce) clearTimeout(cwdDebounce);
     });
@@ -278,7 +301,7 @@ export default function TerminalPane({
     });
 
     return () => {
-      cleanupRef.current.forEach((fn) => fn());
+      runCleanup(cleanupRef.current);
       cleanupRef.current = [];
       onRemoved(termId);
       term.dispose();
