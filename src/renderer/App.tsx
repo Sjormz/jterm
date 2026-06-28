@@ -1,17 +1,22 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import TabBar from './components/TabBar';
+import Titlebar from './components/Titlebar';
+import VerticalTabBar from './components/VerticalTabBar';
 import SplitPane from './components/SplitPane';
 import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
 import CommandPalette, { CommandAction } from './components/CommandPalette';
+import ShortcutEditor from './components/ShortcutEditor';
+import ShellIntegrationHint from './components/ShellIntegrationHint';
 import {
   TabInfo, SessionInfo,
   PaneNode,
   createLeaf, splitPane, removePane, getAllLeafIds, genId,
 } from './types';
 import { ThemeName, applyCssTheme, getTheme } from './themes';
+import { KeybindingsProvider, useKeybindings } from './KeybindingsContext';
+import { KeybindingAction } from './keybindings';
 
-export default function App() {
+function AppInner() {
   const [tabs, setTabs] = useState<TabInfo[]>([{
     id: genId('tab'),
     title: 'terminal',
@@ -25,12 +30,31 @@ export default function App() {
   const [activeTerminals, setActiveTerminals] = useState<Set<string>>(new Set());
   const [paletteVisible, setPaletteVisible] = useState(false);
 
+  // === CWD tracking ===
+  // cwdByTerminal: latest known working directory for each terminal,
+  //   populated either by the initial cwd passed to node-pty (local
+  //   terminals) or by OSC 7 escapes parsed from the PTY output.
+  // focusedTerminalId: which terminal pane currently has focus. The
+  //   sidebar (file explorer, git tree) follows this terminal's cwd.
+  //   Defaults to the first leaf of the active tab so the sidebar is
+  //   never blank.
+  const [cwdByTerminal, setCwdByTerminal] = useState<Record<string, string>>({});
+  const [focusedTerminalId, setFocusedTerminalId] = useState<string | null>(null);
+  // Cached home directory — used as the fallback cwd before any OSC 7
+  // has arrived or for SSH tabs.
+  const [homeDir, setHomeDir] = useState<string>('');
+  useEffect(() => {
+    try { window.jterm.fsGetHome().then(setHomeDir).catch(() => {}); } catch {}
+  }, []);
+
   // Settings state
   const [currentTheme, setCurrentTheme] = useState<ThemeName>('tokyo-night');
   const [fontSize, setFontSize] = useState(14);
   const settingsLoadedRef = useRef(false);
 
-  // Load settings on mount
+  const { bindings, setBinding, matches, on } = useKeybindings();
+
+  // Load settings on mount and apply saved keybindings
   useEffect(() => {
     if (settingsLoadedRef.current) return;
     settingsLoadedRef.current = true;
@@ -40,8 +64,17 @@ export default function App() {
         setCurrentTheme(s.theme || 'tokyo-night');
         setFontSize(s.fontSize || 14);
         applyCssTheme(getTheme(s.theme || 'tokyo-night').css);
+        // Apply saved keybindings
+        if (s.keybindings) {
+          for (const [action, shortcut] of Object.entries(s.keybindings)) {
+            if (shortcut && typeof shortcut === 'string') {
+              setBinding(action as KeybindingAction, shortcut);
+            }
+          }
+        }
       }).catch(() => {});
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Apply CSS theme whenever it changes
@@ -59,6 +92,11 @@ export default function App() {
   const persistFontSize = useCallback((size: number) => {
     setFontSize(size);
     try { window.jterm.setSettings({ fontSize: size }).catch(() => {}); } catch {}
+  }, []);
+
+  // Persist keybindings when they change
+  const handleKeybindingsChange = useCallback((newBindings: Record<KeybindingAction, string>) => {
+    try { window.jterm.setSettings({ keybindings: newBindings }).catch(() => {}); } catch {}
   }, []);
 
   const getTab = useCallback(
@@ -80,6 +118,23 @@ export default function App() {
     setActiveTerminals((prev) => new Set(prev).add(termId));
   }, []);
 
+  // Called by TerminalPane when the shell reports a new cwd (via OSC 7
+  // parsed from the PTY stream). Only the focused terminal's cwd drives
+  // the sidebar, but we still store the cwd for every terminal so that
+  // switching focus is instant.
+  const handleCwdChange = useCallback((termId: string, cwd: string) => {
+    setCwdByTerminal((prev) => {
+      if (prev[termId] === cwd) return prev;
+      return { ...prev, [termId]: cwd };
+    });
+  }, []);
+
+  // Called by TerminalPane when a terminal gains focus. We track this
+  // so the sidebar can react when the user clicks between split panes.
+  const handleTerminalFocus = useCallback((termId: string) => {
+    setFocusedTerminalId(termId);
+  }, []);
+
   // Called when a TerminalPane unmounts
   const handleTerminalRemoved = useCallback(
     (termId: string) => {
@@ -99,7 +154,7 @@ export default function App() {
     (type: 'local' | 'ssh' = 'local', sshSessionId?: string) => {
       const tab: TabInfo = {
         id: genId('tab'),
-        title: type === 'local' ? 'terminal' : `ssh-${sshSessionId?.slice(0, 6)}`,
+        title: type === 'local' ? `terminal ${tabs.length + 1}` : `ssh-${sshSessionId?.slice(0, 6)}`,
         type,
         sshSessionId,
         root: createLeaf(type),
@@ -107,7 +162,7 @@ export default function App() {
       setTabs((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
     },
-    [],
+    [tabs.length],
   );
 
   const closeTab = useCallback(
@@ -178,7 +233,7 @@ export default function App() {
         if (remaining.length === 0) {
           const newTab: TabInfo = {
             id: genId('tab'),
-            title: 'terminal',
+            title: 'terminal 1',
             type: 'local',
             root: createLeaf('local'),
           };
@@ -196,14 +251,68 @@ export default function App() {
 
   const activeTab = getTab(activeTabId);
 
-  // === Command palette keyboard shortcut ===
+  // The terminal pane whose cwd should drive the sidebar. If the user
+  // has explicitly focused a terminal, use that; otherwise fall back to
+  // the first leaf of the active tab so the sidebar is never blank.
+  const sidebarTerminalId = useMemo(() => {
+    if (focusedTerminalId && getAllLeafIds(activeTab.root).includes(focusedTerminalId)) {
+      return focusedTerminalId;
+    }
+    const leaves = getAllLeafIds(activeTab.root);
+    return leaves[0] ?? null;
+  }, [focusedTerminalId, activeTab]);
+
+  // The effective cwd: prefer the focused terminal's last-known cwd, fall
+  // back to the home dir. SSH terminals always show "~" since we can't
+  // resolve a remote cwd into a local file tree.
+  const effectiveCwd = useMemo(() => {
+    if (activeTab.type === 'ssh') return homeDir;
+    if (sidebarTerminalId && cwdByTerminal[sidebarTerminalId]) {
+      return cwdByTerminal[sidebarTerminalId];
+    }
+    return homeDir;
+  }, [activeTab, sidebarTerminalId, cwdByTerminal, homeDir]);
+
+  // === Keyboard shortcuts via keybindings context ===
+  // Register global action handlers
+  useEffect(() => {
+    const unsub1 = on('palette-toggle', () => {
+      setPaletteVisible((v) => !v);
+    });
+    const unsub2 = on('new-terminal', () => addTab('local'));
+    const unsub3 = on('close-tab', () => closeTab(activeTabId));
+    const unsub4 = on('toggle-sidebar', () => setSidebarOpen((v) => !v));
+    const unsub5 = on('font-increase', () => persistFontSize(Math.min(24, fontSize + 1)));
+    const unsub6 = on('font-decrease', () => persistFontSize(Math.max(10, fontSize - 1)));
+    return () => {
+      unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6();
+    };
+  }, [on, addTab, closeTab, activeTabId, persistFontSize, fontSize]);
+
+  // Split/close-pane handlers depend on activeTab so register separately
+  useEffect(() => {
+    const unsub1 = on('split-right', () => {
+      if (!activeTab) return;
+      const leaves = getAllLeafIds(activeTab.root);
+      if (leaves.length > 0) handleSplitPane(activeTab.id, leaves[0], 'vertical');
+    });
+    const unsub2 = on('split-down', () => {
+      if (!activeTab) return;
+      const leaves = getAllLeafIds(activeTab.root);
+      if (leaves.length > 0) handleSplitPane(activeTab.id, leaves[0], 'horizontal');
+    });
+    const unsub3 = on('close-pane', () => {
+      if (!activeTab) return;
+      const leaves = getAllLeafIds(activeTab.root);
+      if (leaves.length > 1) handleClosePane(activeTab.id, leaves[0]);
+    });
+    return () => { unsub1(); unsub2(); unsub3(); };
+  }, [on, activeTab, handleSplitPane, handleClosePane]);
+
+  // === Escape handler for palette ===
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        e.stopPropagation();
-        setPaletteVisible((v) => !v);
-      } else if (e.key === 'Escape' && paletteVisible) {
+      if (e.key === 'Escape' && paletteVisible) {
         setPaletteVisible(false);
       }
     };
@@ -216,15 +325,15 @@ export default function App() {
     const actions: CommandAction[] = [
       {
         id: 'new-terminal', label: 'New Terminal', category: 'Tab',
-        shortcut: 'Ctrl+N', handler: () => addTab('local'),
+        shortcut: bindings['new-terminal'], handler: () => addTab('local'),
       },
       {
         id: 'close-tab', label: 'Close Tab', category: 'Tab',
-        shortcut: 'Ctrl+W', handler: () => closeTab(activeTabId),
+        shortcut: bindings['close-tab'], handler: () => closeTab(activeTabId),
       },
       {
         id: 'toggle-sidebar', label: 'Toggle Sidebar', category: 'View',
-        shortcut: 'Ctrl+B', handler: () => setSidebarOpen((v) => !v),
+        shortcut: bindings['toggle-sidebar'], handler: () => setSidebarOpen((v) => !v),
       },
       {
         id: 'sidebar-files', label: 'Show File Explorer', category: 'View',
@@ -244,11 +353,19 @@ export default function App() {
       },
       {
         id: 'font-increase', label: 'Increase Font Size', category: 'Settings',
-        shortcut: 'Ctrl+Plus', handler: () => persistFontSize(Math.min(24, fontSize + 1)),
+        shortcut: bindings['font-increase'], handler: () => persistFontSize(Math.min(24, fontSize + 1)),
       },
       {
         id: 'font-decrease', label: 'Decrease Font Size', category: 'Settings',
-        shortcut: 'Ctrl+-', handler: () => persistFontSize(Math.max(10, fontSize - 1)),
+        shortcut: bindings['font-decrease'], handler: () => persistFontSize(Math.max(10, fontSize - 1)),
+      },
+      {
+        id: 'search-toggle', label: 'Search in Terminal', category: 'Terminal',
+        shortcut: bindings['search-toggle'], handler: () => {},
+      },
+      {
+        id: 'palette-toggle', label: 'Command Palette', category: 'General',
+        shortcut: bindings['palette-toggle'], handler: () => setPaletteVisible((v) => !v),
       },
       {
         id: 'theme-tokyo-night', label: 'Theme: Tokyo Night', category: 'Theme',
@@ -279,16 +396,16 @@ export default function App() {
         const firstLeaf = leaves[0];
         actions.push({
           id: 'split-right', label: 'Split Right', category: 'Pane',
-          shortcut: 'Ctrl+\\', handler: () => handleSplitPane(activeTab.id, firstLeaf, 'vertical'),
+          shortcut: bindings['split-right'], handler: () => handleSplitPane(activeTab.id, firstLeaf, 'vertical'),
         });
         actions.push({
           id: 'split-down', label: 'Split Down', category: 'Pane',
-          shortcut: 'Ctrl+Shift+\\', handler: () => handleSplitPane(activeTab.id, firstLeaf, 'horizontal'),
+          shortcut: bindings['split-down'], handler: () => handleSplitPane(activeTab.id, firstLeaf, 'horizontal'),
         });
         if (leaves.length > 1) {
           actions.push({
             id: 'close-pane', label: 'Close Pane', category: 'Pane',
-            shortcut: 'Ctrl+Shift+W', handler: () => handleClosePane(activeTab.id, firstLeaf),
+            shortcut: bindings['close-pane'], handler: () => handleClosePane(activeTab.id, firstLeaf),
           });
         }
       }
@@ -297,19 +414,28 @@ export default function App() {
     return actions;
   }, [
     activeTab, activeTabId, addTab, closeTab, handleSplitPane, handleClosePane,
-    fontSize, persistFontSize, persistTheme,
+    fontSize, persistFontSize, persistTheme, bindings,
   ]);
 
   return (
     <div className="app">
-      <TabBar
-        tabs={tabs}
+      <Titlebar
+        section={sidebarSection}
+        onSectionChange={(section) => {
+          if (section === sidebarSection && sidebarOpen) {
+            setSidebarOpen(false);
+          } else {
+            setSidebarSection(section);
+            setSidebarOpen(true);
+          }
+        }}
+        sidebarOpen={sidebarOpen}
+        tabs={tabs.map((t) => ({ id: t.id, title: t.title, type: t.type }))}
         activeTabId={activeTabId}
         onSelectTab={setActiveTabId}
         onCloseTab={closeTab}
         onNewTab={() => addTab('local')}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        onOpenPalette={() => setPaletteVisible(true)}
       />
       <div className="app-body">
         {sidebarOpen && (
@@ -323,8 +449,20 @@ export default function App() {
             onThemeChange={persistTheme}
             fontSize={fontSize}
             onFontSizeChange={persistFontSize}
+            shortcutEditor={<ShortcutEditor />}
+            cwd={effectiveCwd}
+            cwdReady={Boolean(effectiveCwd)}
+            isRemote={activeTab.type === 'ssh'}
+            shellIntegrationHint={<ShellIntegrationHint />}
           />
         )}
+        <VerticalTabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={setActiveTabId}
+          onCloseTab={closeTab}
+          onNewTab={() => addTab('local')}
+        />
         <div className="terminal-area">
           <SplitPane
             node={activeTab.root}
@@ -337,12 +475,20 @@ export default function App() {
             onClosePane={(leafId) => handleClosePane(activeTab.id, leafId)}
             themeName={currentTheme}
             fontSize={fontSize}
+            onCwdChange={handleCwdChange}
+            onTerminalFocus={handleTerminalFocus}
+            initialCwd={homeDir || undefined}
           />
         </div>
       </div>
       <StatusBar
         sshSessions={sshSessions}
         activeTerminalsCount={activeTerminals.size}
+        cwd={effectiveCwd}
+        isRemote={activeTab.type === 'ssh'}
+        remoteHost={activeTab.type === 'ssh'
+          ? sshSessions.find((s) => s.id === activeTab.sshSessionId)?.host
+          : undefined}
       />
       <CommandPalette
         visible={paletteVisible}
@@ -350,5 +496,38 @@ export default function App() {
         actions={paletteActions}
       />
     </div>
+  );
+}
+
+export default function App() {
+  const [bindings, setBindings] = useState<Record<KeybindingAction, string> | null>(null);
+
+  // Load saved keybindings from settings before rendering
+  useEffect(() => {
+    try {
+      window.jterm.getSettings().then((s: any) => {
+        if (s.keybindings) {
+          setBindings(s.keybindings as Record<KeybindingAction, string>);
+        } else {
+          setBindings({} as Record<KeybindingAction, string>);
+        }
+      }).catch(() => setBindings({} as Record<KeybindingAction, string>));
+    } catch {
+      setBindings({} as Record<KeybindingAction, string>);
+    }
+  }, []);
+
+  // Persist keybindings to main process
+  const handleSave = useCallback((b: Record<KeybindingAction, string>) => {
+    try { window.jterm.setSettings({ keybindings: b }).catch(() => {}); } catch {}
+  }, []);
+
+  // Don't render until bindings are loaded (avoids flash of defaults)
+  if (!bindings) return null;
+
+  return (
+    <KeybindingsProvider initialBindings={bindings} onSave={handleSave}>
+      <AppInner />
+    </KeybindingsProvider>
   );
 }

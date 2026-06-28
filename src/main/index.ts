@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import * as path from 'path';
 import { TerminalManager } from './terminal';
 import { SSHManager } from './ssh';
@@ -14,13 +14,22 @@ let gitManager: GitManager;
 let settingsManager: SettingsManager;
 
 function createWindow() {
+  // Remove the default application menu (File / Edit / View / Window).
+  // JTerm uses a fully custom in-renderer titlebar.
+  Menu.setApplicationMenu(null);
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 800,
     minHeight: 600,
     title: 'JTerm',
-    backgroundColor: '#1a1b26',
+    backgroundColor: '#0f0f1a',
+    autoHideMenuBar: true,
+    // Remove the OS-level window chrome — the custom in-renderer titlebar
+    // provides its own drag region and min/max/close controls.
+    frame: false,
+    titleBarStyle: 'hidden',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -33,6 +42,19 @@ function createWindow() {
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
+
+    // Surface renderer errors and console output to the main-process
+    // stdout, so when the window is blank we can see why.
+    mainWindow.webContents.on('console-message', (_event, level, message, line, source) => {
+      const tag = ['LOG', 'WARN', 'ERROR', 'INFO'][level] || `L${level}`;
+      console.log(`[renderer ${tag}] ${source}:${line}  ${message}`);
+    });
+    mainWindow.webContents.on('render-process-gone', (_e, details) => {
+      console.error('[renderer] CRASH:', details);
+    });
+    mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+      console.error(`[renderer] did-fail-load ${code} ${desc} ${url}`);
+    });
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
@@ -177,4 +199,14 @@ function registerIpcHandlers() {
   ipcMain.handle('app:getPlatform', () => {
     return process.platform;
   });
+
+  // === Window controls (for custom titlebar) ===
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
+  ipcMain.handle('window:maximize', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  });
+  ipcMain.handle('window:close', () => mainWindow?.close());
+  ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false);
 }

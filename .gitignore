@@ -3,5 +3,8 @@ dist/
 release/
 .env
 *.log
+.dev-run.log
+.vite.log
+.electron.log
 .DS_Store
 Thumbs.db

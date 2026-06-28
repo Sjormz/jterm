@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SessionInfo } from '../types';
+import { PlusIcon, XCloseIcon, ServerIcon, UnplugIcon, AlertIcon } from '../icons';
 
 interface SSHManagerProps {
   sshSessions: SessionInfo[];
@@ -21,10 +22,8 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!host || !username) return;
-
     setConnecting(true);
     setError(null);
-
     const sessionId = `ssh-${Date.now()}`;
     try {
       await window.jterm.sshConnect({
@@ -36,15 +35,9 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
         password: auth === 'password' ? password : undefined,
         privateKey: auth === 'key' ? privateKey : undefined,
       });
-
       onConnected({ id: sessionId, host, port: parseInt(port) || 22, username });
       setShowForm(false);
-      // Reset form
-      setHost('');
-      setPort('22');
-      setUsername('');
-      setPassword('');
-      setPrivateKey('');
+      setHost(''); setPort('22'); setUsername(''); setPassword(''); setPrivateKey('');
     } catch (err: any) {
       setError(err.message || 'Connection failed');
     } finally {
@@ -63,8 +56,13 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
     <div className="ssh-manager">
       <div className="ssh-header">
         <span className="section-title">SSH Connections</span>
-        <button className="icon-btn" onClick={() => setShowForm(!showForm)}>
-          {showForm ? '✕' : '+'}
+        <button
+          className="icon-btn"
+          onClick={() => setShowForm((v) => !v)}
+          title={showForm ? 'Close form' : 'New connection'}
+          aria-label={showForm ? 'Close form' : 'New connection'}
+        >
+          {showForm ? <XCloseIcon size="sm" /> : <PlusIcon size="sm" />}
         </button>
       </div>
 
@@ -100,16 +98,12 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
               type="button"
               className={`auth-btn ${auth === 'password' ? 'active' : ''}`}
               onClick={() => setAuth('password')}
-            >
-              Password
-            </button>
+            >Password</button>
             <button
               type="button"
               className={`auth-btn ${auth === 'key' ? 'active' : ''}`}
               onClick={() => setAuth('key')}
-            >
-              Key
-            </button>
+            >Key</button>
           </div>
           {auth === 'password' ? (
             <div className="form-row">
@@ -132,9 +126,13 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
               />
             </div>
           )}
-          {error && <div className="ssh-error">{error}</div>}
+          {error && (
+            <div className="ssh-error">
+              <AlertIcon size="sm" /> {error}
+            </div>
+          )}
           <button type="submit" className="connect-btn" disabled={connecting}>
-            {connecting ? 'Connecting...' : 'Connect'}
+            {connecting ? 'Connecting…' : 'Connect'}
           </button>
         </form>
       )}
@@ -146,7 +144,7 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
           sshSessions.map((session) => (
             <div key={session.id} className="ssh-session-item">
               <div className="session-info">
-                <span className="session-icon">🔒</span>
+                <ServerIcon size="md" className="session-icon" />
                 <div className="session-details">
                   <span className="session-user">{session.username}</span>
                   <span className="session-host">@{session.host}:{session.port}</span>
@@ -156,8 +154,9 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
                 className="disconnect-btn"
                 onClick={() => handleDisconnect(session.id)}
                 title="Disconnect"
+                aria-label="Disconnect"
               >
-                ✕
+                <UnplugIcon size="sm" />
               </button>
             </div>
           ))

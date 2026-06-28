@@ -4,16 +4,43 @@ import { app } from 'electron';
 
 export type ThemeName = 'tokyo-night' | 'dracula' | 'one-dark' | 'solarized-light' | 'gruvbox';
 
+export type KeybindingAction =
+  | 'search-toggle'
+  | 'palette-toggle'
+  | 'new-terminal'
+  | 'close-tab'
+  | 'toggle-sidebar'
+  | 'font-increase'
+  | 'font-decrease'
+  | 'split-right'
+  | 'split-down'
+  | 'close-pane';
+
+export const DEFAULT_KEYBINDINGS: Record<KeybindingAction, string> = {
+  'search-toggle': 'Ctrl+F',
+  'palette-toggle': 'Ctrl+K',
+  'new-terminal': 'Ctrl+N',
+  'close-tab': 'Ctrl+W',
+  'toggle-sidebar': 'Ctrl+B',
+  'font-increase': 'Ctrl+Plus',
+  'font-decrease': 'Ctrl+-',
+  'split-right': 'Ctrl+\\',
+  'split-down': 'Ctrl+Shift+\\',
+  'close-pane': 'Ctrl+Shift+W',
+};
+
 export interface AppSettings {
   theme: ThemeName;
   fontSize: number;
   fontFamily: string;
+  keybindings: Record<string, string>;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'tokyo-night',
   fontSize: 14,
   fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace",
+  keybindings: { ...DEFAULT_KEYBINDINGS },
 };
 
 export class SettingsManager {

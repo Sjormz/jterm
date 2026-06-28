@@ -5,6 +5,9 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import SearchOverlay from './SearchOverlay';
 import { getTheme, ThemeName } from '../themes';
+import { useKeybindings } from '../KeybindingsContext';
+import { matchesShortcut } from '../keybindings';
+import { createOsc7State, parseChunk } from '../osc7';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalPaneProps {
@@ -15,6 +18,15 @@ interface TerminalPaneProps {
   onRemoved: (termId: string) => void;
   themeName?: string;
   fontSize?: number;
+  /** Called when this terminal reports a new working directory (via OSC 7). */
+  onCwdChange?: (termId: string, cwd: string) => void;
+  /** Called when this terminal gains focus (so App can route cwd lookups here). */
+  onFocus?: (termId: string) => void;
+  /**
+   * The initial working directory of this terminal. Used as a fallback
+   * so the sidebar has something to show before the first OSC 7 arrives.
+   */
+  initialCwd?: string;
 }
 
 export default function TerminalPane({
@@ -25,6 +37,9 @@ export default function TerminalPane({
   onRemoved,
   themeName,
   fontSize,
+  onCwdChange,
+  onFocus,
+  initialCwd,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -35,6 +50,12 @@ export default function TerminalPane({
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState({ resultIndex: 0, resultCount: 0 });
+  const searchVisibleRef = useRef(false);
+  searchVisibleRef.current = searchVisible;
+
+  const { bindings: kbBindings } = useKeybindings();
+  const kbBindingsRef = useRef(kbBindings);
+  kbBindingsRef.current = kbBindings;
 
   const closeSearch = () => {
     setSearchVisible(false);
@@ -140,13 +161,7 @@ export default function TerminalPane({
     });
     cleanupRef.current.push(() => disposable.dispose());
 
-    // PTY output -> Terminal
-    const cleanupListener = window.jterm.onTerminalData(({ id, data }) => {
-      if (id === termId) {
-        term.write(data);
-      }
-    });
-    cleanupRef.current.push(cleanupListener);
+    // PTY output -> Terminal  (handled below with OSC 7 stripping)
 
     // Handle resize via ResizeObserver
     const resizeObserver = new ResizeObserver(() => {
@@ -183,9 +198,66 @@ export default function TerminalPane({
     // Focus terminal on click
     container.addEventListener('click', () => term.focus());
 
+    // Track focus so App can route sidebar cwd to the currently-focused
+    // terminal. xterm.js doesn't expose an onFocus event on the Terminal
+    // class — we listen to DOM focus events on the container instead.
+    // xterm renders a hidden <textarea> inside the container; the
+    // focusin event fires on the container when the textarea (or any
+    // child) gains focus.
+    const focusListener = () => onFocus?.(termId);
+    container.addEventListener('focusin', focusListener);
+    cleanupRef.current.push(() => container.removeEventListener('focusin', focusListener));
+
     termRef.current = term;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
+
+    // OSC 7 parser: this terminal's per-instance state. The parser
+    // strips the escape from the data we send to xterm and surfaces the
+    // cwd to the App via `onCwdChange`.
+    const osc7 = createOsc7State();
+    if (initialCwd) {
+      osc7.lastCwd = initialCwd;
+    }
+    // Debounce cwd updates so a flurry of OSC 7 sequences (e.g. a script
+    // that cd's many times) doesn't reload the file tree on every one.
+    let cwdDebounce: ReturnType<typeof setTimeout> | null = null;
+    const reportCwd = (newCwd: string) => {
+      if (newCwd === osc7.lastCwd) return;
+      osc7.lastCwd = newCwd;
+      if (cwdDebounce) clearTimeout(cwdDebounce);
+      cwdDebounce = setTimeout(() => {
+        onCwdChange?.(termId, newCwd);
+      }, 80);
+    };
+
+    // PTY output -> xterm (with OSC 7 stripped)
+    const cleanupListener = window.jterm.onTerminalData(({ id, data }) => {
+      if (id === termId) {
+        const { visible, cwd } = parseChunk(osc7, data);
+        if (visible) term.write(visible);
+        if (cwd) reportCwd(cwd);
+      }
+    });
+    cleanupRef.current.push(cleanupListener);
+    cleanupRef.current.push(() => { if (cwdDebounce) clearTimeout(cwdDebounce); });
+
+    // Intercept keyboard shortcuts before xterm processes them
+    term.attachCustomKeyEventHandler((e) => {
+      const currentBindings = kbBindingsRef.current;
+      // Check search-toggle shortcut (default Ctrl+F)
+      if (matchesShortcut(e, currentBindings['search-toggle'])) {
+        e.preventDefault();
+        setSearchVisible((v) => !v);
+        return false;
+      }
+      if (e.key === 'Escape' && searchVisibleRef.current) {
+        e.preventDefault();
+        closeSearch();
+        return false;
+      }
+      return true;
+    });
 
     return () => {
       cleanupRef.current.forEach((fn) => fn());
@@ -227,22 +299,6 @@ export default function TerminalPane({
     }, 50);
     return () => clearTimeout(timer);
   }, []);
-
-  // Keyboard shortcut handler for Ctrl+F / Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        e.stopPropagation();
-        setSearchVisible((v) => !v);
-      }
-      if (e.key === 'Escape' && searchVisible) {
-        closeSearch();
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [searchVisible]);
 
   return (
     <div className="terminal-container" ref={containerRef}>

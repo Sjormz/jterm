@@ -13,8 +13,8 @@ describe('ThemeSwitcher', () => {
       />,
     );
 
-    // Should have a Settings header
-    expect(screen.getByText('Settings')).toBeInTheDocument();
+    // Theme label is present
+    expect(screen.getByText(/Theme/)).toBeInTheDocument();
 
     // Should have theme buttons
     expect(screen.getByText('Tokyo Night')).toBeInTheDocument();
@@ -57,7 +57,25 @@ describe('ThemeSwitcher', () => {
     expect(screen.getByText('Font Size: 16px')).toBeInTheDocument();
   });
 
-  it('calls onFontSizeChange when +/- buttons are clicked', () => {
+  it('renders a font size slider with current value', () => {
+    render(
+      <ThemeSwitcher
+        currentTheme="tokyo-night"
+        onThemeChange={vi.fn()}
+        fontSize={15}
+        onFontSizeChange={vi.fn()}
+      />,
+    );
+
+    const slider = screen.getByLabelText('Font size') as HTMLInputElement;
+    expect(slider).toBeInTheDocument();
+    expect(slider.type).toBe('range');
+    expect(slider.value).toBe('15');
+    expect(slider.min).toBe('10');
+    expect(slider.max).toBe('24');
+  });
+
+  it('calls onFontSizeChange when the slider is moved', () => {
     const onFontSizeChange = vi.fn();
     render(
       <ThemeSwitcher
@@ -68,48 +86,8 @@ describe('ThemeSwitcher', () => {
       />,
     );
 
-    const buttons = screen.getAllByRole('button');
-    // Find the decrease button (the one with text '−')
-    const decreaseBtn = buttons.find((b) => b.textContent === '−');
-    const increaseBtn = buttons.find((b) => b.textContent === '+');
-
-    expect(decreaseBtn).toBeTruthy();
-    expect(increaseBtn).toBeTruthy();
-
-    fireEvent.click(decreaseBtn!);
-    expect(onFontSizeChange).toHaveBeenCalledWith(13);
-
-    fireEvent.click(increaseBtn!);
-    expect(onFontSizeChange).toHaveBeenCalledWith(15);
-  });
-
-  it('disables decrease button at min font size (10)', () => {
-    render(
-      <ThemeSwitcher
-        currentTheme="tokyo-night"
-        onThemeChange={vi.fn()}
-        fontSize={10}
-        onFontSizeChange={vi.fn()}
-      />,
-    );
-
-    const buttons = screen.getAllByRole('button');
-    const decreaseBtn = buttons.find((b) => b.textContent === '−');
-    expect(decreaseBtn).toBeDisabled();
-  });
-
-  it('disables increase button at max font size (24)', () => {
-    render(
-      <ThemeSwitcher
-        currentTheme="tokyo-night"
-        onThemeChange={vi.fn()}
-        fontSize={24}
-        onFontSizeChange={vi.fn()}
-      />,
-    );
-
-    const buttons = screen.getAllByRole('button');
-    const increaseBtn = buttons.find((b) => b.textContent === '+');
-    expect(increaseBtn).toBeDisabled();
+    const slider = screen.getByLabelText('Font size') as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: '18' } });
+    expect(onFontSizeChange).toHaveBeenCalledWith(18);
   });
 });

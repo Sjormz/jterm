@@ -36,6 +36,11 @@ const themes: Record<ThemeName, ThemeDefinition> = {
       'blue': '#7aa2f7',
       'magenta': '#bb9af7',
       'cyan': '#7dcfff',
+      // Glass system
+      'glass-bg': 'rgba(15, 15, 26, 0.78)',
+      'glass-bg-light': 'rgba(26, 27, 46, 0.6)',
+      'glass-border': 'rgba(255, 255, 255, 0.06)',
+      'glass-border-active': 'rgba(122, 162, 247, 0.4)',
     },
     xterm: {
       background: '#0f0f1a',
@@ -81,6 +86,10 @@ const themes: Record<ThemeName, ThemeDefinition> = {
       'blue': '#8be9fd',
       'magenta': '#bd93f9',
       'cyan': '#66d9ef',
+      'glass-bg': 'rgba(30, 31, 41, 0.78)',
+      'glass-bg-light': 'rgba(40, 42, 54, 0.6)',
+      'glass-border': 'rgba(255, 255, 255, 0.06)',
+      'glass-border-active': 'rgba(189, 147, 249, 0.4)',
     },
     xterm: {
       background: '#1e1f29',
@@ -126,6 +135,10 @@ const themes: Record<ThemeName, ThemeDefinition> = {
       'blue': '#61afef',
       'magenta': '#c678dd',
       'cyan': '#56b6c2',
+      'glass-bg': 'rgba(30, 33, 39, 0.78)',
+      'glass-bg-light': 'rgba(40, 44, 52, 0.6)',
+      'glass-border': 'rgba(255, 255, 255, 0.06)',
+      'glass-border-active': 'rgba(97, 175, 239, 0.4)',
     },
     xterm: {
       background: '#1e2127',
@@ -171,6 +184,10 @@ const themes: Record<ThemeName, ThemeDefinition> = {
       'blue': '#268bd2',
       'magenta': '#d33682',
       'cyan': '#2aa198',
+      'glass-bg': 'rgba(253, 246, 227, 0.85)',
+      'glass-bg-light': 'rgba(238, 232, 213, 0.7)',
+      'glass-border': 'rgba(0, 0, 0, 0.08)',
+      'glass-border-active': 'rgba(38, 139, 210, 0.4)',
     },
     xterm: {
       background: '#fdf6e3',
@@ -216,6 +233,10 @@ const themes: Record<ThemeName, ThemeDefinition> = {
       'blue': '#458588',
       'magenta': '#b16286',
       'cyan': '#689d6a',
+      'glass-bg': 'rgba(27, 27, 27, 0.78)',
+      'glass-bg-light': 'rgba(40, 40, 40, 0.6)',
+      'glass-border': 'rgba(255, 255, 255, 0.06)',
+      'glass-border-active': 'rgba(215, 153, 33, 0.4)',
     },
     xterm: {
       background: '#1b1b1b',

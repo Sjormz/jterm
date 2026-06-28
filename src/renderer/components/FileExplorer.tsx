@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import {
+  ArrowLeftIcon, EyeIcon, EyeOffIcon, RefreshIcon,
+  fileIconFor,
+} from '../icons';
 
 interface FileEntry {
   name: string;
@@ -9,7 +13,16 @@ interface FileEntry {
   mtime: string;
 }
 
-export default function FileExplorer() {
+interface FileExplorerProps {
+  /** Cwd of the focused terminal. The explorer reloads when this changes. */
+  cwd: string;
+  /** True once we have a real cwd (vs. the empty string initial state). */
+  cwdReady: boolean;
+  /** True if the active tab is an SSH tab. */
+  isRemote: boolean;
+}
+
+export default function FileExplorer({ cwd, cwdReady, isRemote }: FileExplorerProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -19,14 +32,16 @@ export default function FileExplorer() {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [dirContents, setDirContents] = useState<Record<string, FileEntry[]>>({});
 
-  // Initialize with home directory
+  // Sync the explorer's current path with the focused terminal's cwd.
+  // We only auto-jump when the cwd prop changes (not when the user
+  // navigates manually inside the explorer). This is the core "follow
+  // the terminal" feature: any `cd` in the terminal moves the explorer.
   useEffect(() => {
-    window.jterm.fsGetHome().then((home) => {
-      setCurrentPath(home);
-    });
-  }, []);
+    if (!cwd) return;
+    setCurrentPath(cwd);
+    setHistory([]); // terminal-driven navigation is a fresh start
+  }, [cwd]);
 
-  // Load directory contents when path changes
   useEffect(() => {
     if (!currentPath) return;
     loadDirectory(currentPath);
@@ -47,57 +62,61 @@ export default function FileExplorer() {
   };
 
   const navigateTo = (dirPath: string) => {
-    setHistory(prev => [...prev, currentPath]);
+    setHistory((prev) => [...prev, currentPath]);
     setCurrentPath(dirPath);
   };
 
   const goBack = () => {
     if (history.length > 0) {
       const prev = history[history.length - 1];
-      setHistory(prev => prev.slice(0, -1));
+      setHistory((h) => h.slice(0, -1));
       setCurrentPath(prev);
     }
   };
 
-  const toggleExpand = async (dirPath: string) => {
-    if (expandedDirs.has(dirPath)) {
-      setExpandedDirs(prev => {
-        const next = new Set(prev);
-        next.delete(dirPath);
-        return next;
-      });
-    } else {
-      // Load the directory contents
-      try {
-        const result = await window.jterm.fsListDir({ dirPath, showHidden: false });
-        setDirContents(prev => ({ ...prev, [dirPath]: result }));
-      } catch {}
-      setExpandedDirs(prev => new Set(prev).add(dirPath));
-    }
-  };
-
   const handleFileClick = (entry: FileEntry) => {
-    if (entry.isDirectory) {
-      navigateTo(entry.path);
-    }
+    if (entry.isDirectory) navigateTo(entry.path);
   };
 
-  // Get the path segments for breadcrumb
   const pathSegments = currentPath.split(/[/\\]/).filter(Boolean);
 
   return (
     <div className="file-explorer">
+      {isRemote && (
+        <div className="explorer-remote-notice">
+          The active tab is an SSH session. The file explorer shows your
+          <em> local </em>
+          cwd; the remote cwd is shown in the status bar.
+        </div>
+      )}
       <div className="explorer-header">
         <span className="section-title">Explorer</span>
         <div className="explorer-toolbar">
-          <button className="icon-btn" onClick={goBack} disabled={history.length === 0} title="Go back">
-            ←
+          <button
+            className="icon-btn"
+            onClick={goBack}
+            disabled={history.length === 0}
+            title="Go back"
+            aria-label="Go back"
+          >
+            <ArrowLeftIcon size="sm" />
           </button>
-          <button className="icon-btn" onClick={() => setShowHidden(!showHidden)} title="Show hidden files">
-            {showHidden ? '👁' : '👁‍🗨'}
+          <button
+            className="icon-btn"
+            onClick={() => setShowHidden(!showHidden)}
+            title={showHidden ? 'Hide hidden files' : 'Show hidden files'}
+            aria-label="Toggle hidden files"
+            aria-pressed={showHidden}
+          >
+            {showHidden ? <EyeOffIcon size="sm" /> : <EyeIcon size="sm" />}
           </button>
-          <button className="icon-btn" onClick={() => loadDirectory(currentPath)} title="Refresh">
-            ↻
+          <button
+            className="icon-btn"
+            onClick={() => loadDirectory(currentPath)}
+            title="Refresh"
+            aria-label="Refresh"
+          >
+            <RefreshIcon size="sm" />
           </button>
         </div>
       </div>
@@ -107,20 +126,20 @@ export default function FileExplorer() {
           <button className="crumb" onClick={() => navigateTo('/')}>/</button>
         )}
         {currentPath.match(/^[A-Z]:/) && (
-          <button className="crumb drive-crumb" onClick={async () => {
-            const drives = await window.jterm.fsGetDrives();
-            // Just go to drive root
-            const driveRoot = currentPath.substring(0, 3);
-            navigateTo(driveRoot);
-          }}>
+          <button
+            className="crumb drive-crumb"
+            onClick={() => {
+              const driveRoot = currentPath.substring(0, 3);
+              navigateTo(driveRoot);
+            }}
+          >
             {currentPath.substring(0, 2)}
           </button>
         )}
         {pathSegments.map((seg, i) => {
           const pathSoFar = currentPath.split(/[/\\]/).slice(0, i + 1).join('/');
-          // Fix Windows paths
           const isDrive = seg.match(/^[A-Z]:$/i) || seg.match(/^[A-Z]$/i);
-          if (isDrive && i === 0) return null; // Skip drive letter in breadcrumb after button
+          if (isDrive && i === 0) return null;
           return (
             <React.Fragment key={pathSoFar}>
               <span className="crumb-sep">/</span>
@@ -133,27 +152,27 @@ export default function FileExplorer() {
       </div>
 
       <div className="explorer-tree">
-        {loading && <div className="explorer-loading">Loading...</div>}
+        {loading && <div className="explorer-loading">Loading…</div>}
         {error && <div className="explorer-error">{error}</div>}
 
-        {/* Current directory entries */}
-        {entries.map((entry) => (
-          <div
-            key={entry.path}
-            className={`explorer-item ${entry.isDirectory ? 'dir' : 'file'}`}
-            onClick={() => handleFileClick(entry)}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData('text/plain', entry.path);
-              e.dataTransfer.effectAllowed = 'copy';
-            }}
-          >
-            <span className="item-icon">
-              {entry.isDirectory ? (expandedDirs.has(entry.path) ? '📂' : '📁') : getFileIcon(entry.name)}
-            </span>
-            <span className="item-name">{entry.name}</span>
-          </div>
-        ))}
+        {entries.map((entry) => {
+          const Icon = fileIconFor(entry.name, entry.isDirectory, expandedDirs.has(entry.path));
+          return (
+            <div
+              key={entry.path}
+              className={`explorer-item ${entry.isDirectory ? 'dir' : 'file'}`}
+              onClick={() => handleFileClick(entry)}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', entry.path);
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
+            >
+              <Icon size="md" className="item-icon" />
+              <span className="item-name">{entry.name}</span>
+            </div>
+          );
+        })}
 
         {!loading && entries.length === 0 && !error && (
           <div className="explorer-empty">Empty directory</div>
@@ -161,22 +180,4 @@ export default function FileExplorer() {
       </div>
     </div>
   );
-}
-
-function getFileIcon(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const iconMap: Record<string, string> = {
-    js: '📜', ts: '📘', jsx: '⚛️', tsx: '⚛️',
-    py: '🐍', rs: '🦀', go: '🔷',
-    json: '📋', yaml: '📋', yml: '📋', toml: '📋',
-    md: '📝', txt: '📄',
-    html: '🌐', css: '🎨', scss: '🎨',
-    png: '🖼️', jpg: '🖼️', jpeg: '🖼️', gif: '🖼️', svg: '🖼️',
-    mp3: '🎵', wav: '🎵', mp4: '🎬',
-    zip: '📦', tar: '📦', gz: '📦',
-    exe: '⚙️', dll: '⚙️',
-    gitignore: '🙈',
-    lock: '🔒',
-  };
-  return iconMap[ext || ''] || '📄';
 }

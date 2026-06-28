@@ -18,11 +18,19 @@ interface SidebarProps {
   onThemeChange: (theme: ThemeName) => void;
   fontSize: number;
   onFontSizeChange: (size: number) => void;
+  shortcutEditor?: React.ReactNode;
+  /** Current working directory of the focused terminal (or home if none). */
+  cwd: string;
+  /** True once we have a usable cwd to show. */
+  cwdReady: boolean;
+  /** True if the active tab is an SSH tab. Sidebar shows a notice. */
+  isRemote: boolean;
+  /** Shell integration copy-paste hints, shown in Settings. */
+  shellIntegrationHint?: React.ReactNode;
 }
 
 export default function Sidebar({
   section,
-  onSectionChange,
   sshSessions,
   onSSHConnected,
   onSSHDisconnected,
@@ -30,30 +38,16 @@ export default function Sidebar({
   onThemeChange,
   fontSize,
   onFontSizeChange,
+  shortcutEditor,
+  cwd,
+  cwdReady,
+  isRemote,
+  shellIntegrationHint,
 }: SidebarProps) {
-  const sections: Array<{ key: SidebarSection; label: string; icon: string }> = [
-    { key: 'files', label: 'Files', icon: '📁' },
-    { key: 'ssh', label: 'SSH', icon: '🔒' },
-    { key: 'git', label: 'Git', icon: '⎇' },
-    { key: 'settings', label: 'Settings', icon: '⚙' },
-  ];
-
   return (
     <div className="sidebar">
-      <div className="sidebar-tabs">
-        {sections.map((s) => (
-          <button
-            key={s.key}
-            className={`sidebar-tab ${section === s.key ? 'active' : ''}`}
-            onClick={() => onSectionChange(s.key)}
-            title={s.label}
-          >
-            <span>{s.icon}</span>
-          </button>
-        ))}
-      </div>
       <div className="sidebar-content">
-        {section === 'files' && <FileExplorer />}
+        {section === 'files' && <FileExplorer cwd={cwd} cwdReady={cwdReady} isRemote={isRemote} />}
         {section === 'ssh' && (
           <SSHManager
             sshSessions={sshSessions}
@@ -61,14 +55,18 @@ export default function Sidebar({
             onDisconnected={onSSHDisconnected}
           />
         )}
-        {section === 'git' && <GitTree />}
+        {section === 'git' && <GitTree cwd={cwd} cwdReady={cwdReady} isRemote={isRemote} />}
         {section === 'settings' && (
-          <ThemeSwitcher
-            currentTheme={currentTheme}
-            onThemeChange={onThemeChange}
-            fontSize={fontSize}
-            onFontSizeChange={onFontSizeChange}
-          />
+          <>
+            <ThemeSwitcher
+              currentTheme={currentTheme}
+              onThemeChange={onThemeChange}
+              fontSize={fontSize}
+              onFontSizeChange={onFontSizeChange}
+            />
+            {shortcutEditor}
+            {shellIntegrationHint}
+          </>
         )}
       </div>
     </div>

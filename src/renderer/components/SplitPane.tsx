@@ -3,6 +3,7 @@ import {
   PaneNode, SplitNode, TerminalLeaf,
 } from '../types';
 import TerminalPane from './TerminalPane';
+import { ChevronsRightIcon, ChevronsDownIcon, XCloseIcon } from '../icons';
 
 interface SplitPaneProps {
   node: PaneNode;
@@ -15,6 +16,12 @@ interface SplitPaneProps {
   onClosePane: (leafId: string) => void;
   themeName?: string;
   fontSize?: number;
+  /** Called when a terminal reports a new cwd (via OSC 7). */
+  onCwdChange?: (termId: string, cwd: string) => void;
+  /** Called when a terminal gains focus. */
+  onTerminalFocus?: (termId: string) => void;
+  /** The initial cwd for newly-created local terminals. */
+  initialCwd?: string;
 }
 
 /** Wraps a TerminalLeaf with split/close action buttons */
@@ -29,6 +36,9 @@ function TerminalPaneLeaf({
   onClose,
   themeName,
   fontSize,
+  onCwdChange,
+  onTerminalFocus,
+  initialCwd,
 }: {
   leaf: TerminalLeaf;
   tabType: 'local' | 'ssh';
@@ -40,20 +50,23 @@ function TerminalPaneLeaf({
   onClose: () => void;
   themeName?: string;
   fontSize?: number;
+  onCwdChange?: (termId: string, cwd: string) => void;
+  onTerminalFocus?: (termId: string) => void;
+  initialCwd?: string;
 }) {
   return (
     <div className="terminal-leaf">
       <div className="terminal-leaf-header">
         <span className="leaf-title">{leaf.title || 'terminal'}</span>
         <div className="leaf-actions">
-          <button className="leaf-btn" onClick={onSplitRight} title="Split right">
-            ▮▶
+          <button className="leaf-btn" onClick={onSplitRight} title="Split right" aria-label="Split right">
+            <ChevronsRightIcon size="sm" />
           </button>
-          <button className="leaf-btn" onClick={onSplitDown} title="Split down">
-            ▮▼
+          <button className="leaf-btn" onClick={onSplitDown} title="Split down" aria-label="Split down">
+            <ChevronsDownIcon size="sm" />
           </button>
-          <button className="leaf-btn leaf-close" onClick={onClose} title="Close pane">
-            ×
+          <button className="leaf-btn leaf-close" onClick={onClose} title="Close pane" aria-label="Close pane">
+            <XCloseIcon size="sm" />
           </button>
         </div>
       </div>
@@ -66,6 +79,9 @@ function TerminalPaneLeaf({
           onRemoved={onTerminalRemoved}
           themeName={themeName}
           fontSize={fontSize}
+          onCwdChange={onCwdChange}
+          onFocus={onTerminalFocus}
+          initialCwd={initialCwd}
         />
       </div>
     </div>
@@ -171,7 +187,11 @@ function SplitDivider({
 
 /** Recursive split pane renderer */
 export default function SplitPane(props: SplitPaneProps) {
-  const { node, tabType, sshSessionId, onTerminalReady, onTerminalRemoved, onSplitPane, onClosePane, themeName, fontSize } = props;
+  const {
+    node, tabType, sshSessionId, onTerminalReady, onTerminalRemoved,
+    onSplitPane, onClosePane, themeName, fontSize,
+    onCwdChange, onTerminalFocus, initialCwd,
+  } = props;
 
   if (node.type === 'leaf') {
     return (
@@ -186,6 +206,9 @@ export default function SplitPane(props: SplitPaneProps) {
         onClose={() => onClosePane(node.id)}
         themeName={themeName}
         fontSize={fontSize}
+        onCwdChange={onCwdChange}
+        onTerminalFocus={onTerminalFocus}
+        initialCwd={initialCwd}
       />
     );
   }
@@ -213,6 +236,9 @@ export default function SplitPane(props: SplitPaneProps) {
               onClosePane={onClosePane}
               themeName={themeName}
               fontSize={fontSize}
+              onCwdChange={onCwdChange}
+              onTerminalFocus={onTerminalFocus}
+              initialCwd={initialCwd}
             />
           </div>
         </React.Fragment>

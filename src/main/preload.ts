@@ -58,6 +58,12 @@ const api = {
 
   // App
   getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
+
+  // Window controls (custom titlebar)
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowMaximize: () => ipcRenderer.invoke('window:maximize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+  windowIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
 };
 
 contextBridge.exposeInMainWorld('jterm', api);

@@ -1,0 +1,199 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  FilesIcon, SSHIcon, SourceControlIcon, SettingsIconCmp,
+  MinimizeIcon, MaximizeIcon, RestoreIcon, CloseIcon,
+  CommandIcon, PlusIcon, ChevronDownIcon, TerminalTabIcon, LockIcon,
+  CircleDotIcon,
+} from '../icons';
+
+export type SidebarSection = 'files' | 'ssh' | 'git' | 'settings';
+
+interface NavItem {
+  key: SidebarSection;
+  Icon: React.FC<any>;
+  label: string;
+  shortcut?: string;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { key: 'files',    Icon: FilesIcon,           label: 'Explorer' },
+  { key: 'ssh',      Icon: SSHIcon,             label: 'SSH' },
+  { key: 'git',      Icon: SourceControlIcon,   label: 'Source Control' },
+  { key: 'settings', Icon: SettingsIconCmp,     label: 'Settings' },
+];
+
+interface TitlebarProps {
+  // sidebar nav
+  section: SidebarSection;
+  onSectionChange: (s: SidebarSection) => void;
+  sidebarOpen: boolean;
+  // tabs (compact horizontal chips next to the nav)
+  tabs: Array<{ id: string; title: string; type: 'local' | 'ssh' }>;
+  activeTabId: string;
+  onSelectTab: (id: string) => void;
+  onCloseTab: (id: string) => void;
+  onNewTab: () => void;
+  // palette
+  onOpenPalette: () => void;
+}
+
+/**
+ * Top-of-window chrome: app brand, section nav (left), tab chips + new tab
+ * (middle), palette hint, and window controls (right). The whole bar is a
+ * drag region except for the interactive buttons.
+ */
+export default function Titlebar({
+  section,
+  onSectionChange,
+  sidebarOpen,
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+  onNewTab,
+  onOpenPalette,
+}: TitlebarProps) {
+  const [maximized, setMaximized] = useState(false);
+
+  const refreshMaximized = useCallback(async () => {
+    try { setMaximized(await window.jterm.windowIsMaximized()); } catch {}
+  }, []);
+
+  useEffect(() => { refreshMaximized(); }, [refreshMaximized]);
+
+  // Track maximize state changes (window resize on Windows doesn't always
+  // tell us directly, so poll on focus / resize).
+  useEffect(() => {
+    const onResize = () => refreshMaximized();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('focus', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('focus', onResize);
+    };
+  }, [refreshMaximized]);
+
+  return (
+    <div className="titlebar" role="banner">
+      {/* Brand */}
+      <div className="titlebar-brand">
+        <div className="titlebar-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+        </div>
+        <span className="titlebar-app-name">JTerm</span>
+      </div>
+
+      {/* Section nav (was ActivityBar) */}
+      <nav className="titlebar-nav" aria-label="Sidebar section">
+        {NAV_ITEMS.map(({ key, Icon, label }) => {
+          const active = sidebarOpen && section === key;
+          return (
+            <button
+              key={key}
+              className={`titlebar-nav-btn ${active ? 'active' : ''}`}
+              onClick={() => onSectionChange(key)}
+              title={label}
+              aria-label={label}
+              aria-pressed={active}
+            >
+              <Icon size="md" />
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Tab strip */}
+      <div className="titlebar-tabs" role="tablist" aria-label="Open terminals">
+        {tabs.map((tab) => {
+          const isActive = tab.id === activeTabId;
+          const TabIcon = tab.type === 'ssh' ? LockIcon : TerminalTabIcon;
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={isActive}
+              className={`titlebar-tab ${isActive ? 'active' : ''} ${tab.type === 'ssh' ? 'ssh' : ''}`}
+              onClick={() => onSelectTab(tab.id)}
+              title={tab.title}
+            >
+              {isActive && <CircleDotIcon size="xs" className="titlebar-tab-dot" />}
+              <TabIcon size="sm" />
+              <span className="titlebar-tab-title">{tab.title}</span>
+              {tabs.length > 1 && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="titlebar-tab-close"
+                  title="Close"
+                  onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onCloseTab(tab.id);
+                    }
+                  }}
+                >
+                  <CloseIcon size="xs" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+        <button
+          className="titlebar-tab-new"
+          onClick={onNewTab}
+          title="New terminal"
+          aria-label="New terminal"
+        >
+          <PlusIcon size="sm" />
+        </button>
+      </div>
+
+      {/* Right cluster: palette + window controls */}
+      <div className="titlebar-right">
+        <button
+          className="titlebar-palette-btn"
+          onClick={onOpenPalette}
+          title="Command palette (Ctrl+Shift+P)"
+        >
+          <span className="titlebar-palette-label">Search</span>
+          <kbd className="titlebar-kbd">
+            <CommandIcon size="xs" />
+            <span>K</span>
+          </kbd>
+        </button>
+
+        <div className="titlebar-controls">
+          <button
+            className="titlebar-control-btn"
+            onClick={() => window.jterm.windowMinimize()}
+            title="Minimize"
+            aria-label="Minimize"
+          >
+            <MinimizeIcon size="md" />
+          </button>
+          <button
+            className="titlebar-control-btn"
+            onClick={() => { window.jterm.windowMaximize().then(refreshMaximized); }}
+            title={maximized ? 'Restore' : 'Maximize'}
+            aria-label={maximized ? 'Restore' : 'Maximize'}
+          >
+            {maximized ? <RestoreIcon size="md" /> : <MaximizeIcon size="md" />}
+          </button>
+          <button
+            className="titlebar-control-btn close"
+            onClick={() => window.jterm.windowClose()}
+            title="Close"
+            aria-label="Close"
+          >
+            <CloseIcon size="md" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
