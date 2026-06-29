@@ -1,5 +1,6 @@
 import { ITheme } from '@xterm/xterm';
 import { ThemeName } from '../main/settings';
+export type { ThemeName };
 
 /**
  * CSS variable overrides per theme.

@@ -188,7 +188,7 @@ function SplitDivider({
 /** Recursive split pane renderer */
 export default function SplitPane(props: SplitPaneProps) {
   const {
-    node, tabType, sshSessionId, onTerminalReady, onTerminalRemoved,
+    node, tabId, tabType, sshSessionId, onTerminalReady, onTerminalRemoved,
     onSplitPane, onClosePane, themeName, fontSize,
     onCwdChange, onTerminalFocus, initialCwd,
   } = props;
@@ -228,6 +228,7 @@ export default function SplitPane(props: SplitPaneProps) {
           <div className="split-child" style={{ flex: 1 }}>
             <SplitPane
               node={child}
+              tabId={tabId}
               tabType={tabType}
               sshSessionId={sshSessionId}
               onTerminalReady={onTerminalReady}

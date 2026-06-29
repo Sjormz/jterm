@@ -61,7 +61,9 @@ export class SSHManager {
     const conn = this.connections.get(sessionId);
     if (!conn) throw new Error(`SSH session ${sessionId} not found`);
 
-    const stream = conn.client.shell({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client: any = conn.client;
+    const stream = client.shell({
       cols: size.cols,
       rows: size.rows,
       term: 'xterm-256color',
@@ -76,12 +78,14 @@ export class SSHManager {
       }
     });
 
-    stream.stderr.on('data', (data: Buffer) => {
-      const str = data.toString('utf-8');
-      for (const cb of callbacks) {
-        cb(str);
-      }
-    });
+    if (stream.stderr) {
+      stream.stderr.on('data', (data: Buffer) => {
+        const str = data.toString('utf-8');
+        for (const cb of callbacks) {
+          cb(str);
+        }
+      });
+    }
 
     stream.on('close', () => {
       conn.shells.delete(termId);
@@ -129,8 +133,7 @@ export class SSHManager {
           if (err) return reject(err);
 
           const entries = list.map((item) => {
-            const isDir = (item.attrs.isDirectory && item.longname?.startsWith?.('d')) || 
-                          item.attrs.isDirectory();
+            const isDir = item.attrs.isDirectory;
             return {
               name: item.filename,
               path: remotePath === '/' ? `/${item.filename}` : `${remotePath}/${item.filename}`,

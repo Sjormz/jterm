@@ -17,7 +17,7 @@ import {
   // Status
   Circle, CircleDot,
   // UI
-  Search, SearchX, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
+  Search, SearchX, ArrowUp, ArrowDown, ArrowRight,
   Pencil, Trash2, Sliders, Type,
   ChevronsRight, ChevronsDown, ChevronsUp, ChevronsLeft,
   // SSH
