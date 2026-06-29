@@ -12,11 +12,19 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "npx electron dist/main/index.js",
-    "dist": "npx electron-builder"
+    "dist": "npm run build && npx electron-builder",
+    "dist:win": "npm run build && npx electron-builder --win",
+    "dist:mac": "npm run build && npx electron-builder --mac",
+    "dist:linux": "npm run build && npx electron-builder --linux",
+    "publish": "npm run build && npx electron-builder --publish always",
+    "publish:win": "npm run build && npx electron-builder --win --publish always",
+    "publish:mac": "npm run build && npx electron-builder --mac --publish always",
+    "publish:linux": "npm run build && npx electron-builder --linux --publish always"
   },
   "build": {
     "appId": "com.pckpr.jterm",
     "productName": "JTerm",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -24,20 +32,90 @@
       "dist/**/*",
       "!dist/renderer/**/*.map"
     ],
+    "asarUnpack": [
+      "node_modules/node-pty/**",
+      "node_modules/ssh2/**"
+    ],
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-Setup-${version}-win-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JTerm",
+      "deleteAppDataOnUninstall": false,
+      "displayLanguageSelector": false,
+      "unicode": true
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-win-x64.${ext}",
+      "requestExecutionLevel": "user"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "assets/icon.icns"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ],
+      "window": { "width": 540, "height": 380 }
     },
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
       ],
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-${version}-linux-x64.${ext}",
+      "category": "TerminalEmulator",
+      "synopsis": "A powerful cross-platform terminal emulator",
+      "description": "JTerm - A powerful cross-platform terminal with file explorer, SSH, and git tree",
+      "executableName": "jterm"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Sjormz",
+      "repo": "jterm",
+      "releaseType": "release"
     }
   },
   "keywords": [
@@ -54,6 +132,7 @@
     "@xterm/addon-unicode11": "^0.8.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^1.22.0",
     "node-pty": "^1.1.0",
     "react": "^18.3.1",

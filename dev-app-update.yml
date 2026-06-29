@@ -1,0 +1,9 @@
+# Dev-mode update config for electron-updater
+# This file is only used in development mode.
+# In production, electron-updater reads app-update.yml from the app resources.
+# To test updates locally, change version to something higher than the current
+# package.json version and point provider/owner/repo to a test repo with a release.
+provider: github
+owner: Sjormz
+repo: jterm
+releaseType: release

@@ -1,5 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+export interface UpdateProgress {
+  percent: number;
+  bytesPerSecond: number;
+  transferred: number;
+  total: number;
+}
+
+export interface UpdateAvailableInfo {
+  version: string;
+  releaseDate?: string;
+  releaseNotes?: string;
+}
+
 const api = {
   // Terminal
   terminalCreate: (params: { id: string; cwd?: string; shell?: string }) =>
@@ -64,6 +77,42 @@ const api = {
   windowMaximize: () => ipcRenderer.invoke('window:maximize'),
   windowClose: () => ipcRenderer.invoke('window:close'),
   windowIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+
+  // === Auto-update ===
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+
+  onUpdateChecking: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('update:checking', handler);
+    return () => ipcRenderer.removeListener('update:checking', handler);
+  },
+  onUpdateAvailable: (callback: (info: UpdateAvailableInfo) => void) => {
+    const handler = (_event: any, info: UpdateAvailableInfo) => callback(info);
+    ipcRenderer.on('update:available', handler);
+    return () => ipcRenderer.removeListener('update:available', handler);
+  },
+  onUpdateNotAvailable: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('update:not-available', handler);
+    return () => ipcRenderer.removeListener('update:not-available', handler);
+  },
+  onUpdateDownloadProgress: (callback: (progress: UpdateProgress) => void) => {
+    const handler = (_event: any, progress: UpdateProgress) => callback(progress);
+    ipcRenderer.on('update:download-progress', handler);
+    return () => ipcRenderer.removeListener('update:download-progress', handler);
+  },
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+    const handler = (_event: any, info: { version: string }) => callback(info);
+    ipcRenderer.on('update:downloaded', handler);
+    return () => ipcRenderer.removeListener('update:downloaded', handler);
+  },
+  onUpdateError: (callback: (error: { message: string }) => void) => {
+    const handler = (_event: any, error: { message: string }) => callback(error);
+    ipcRenderer.on('update:error', handler);
+    return () => ipcRenderer.removeListener('update:error', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('jterm', api);

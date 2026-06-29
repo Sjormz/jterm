@@ -7,6 +7,7 @@ import StatusBar from './components/StatusBar';
 import CommandPalette, { CommandAction } from './components/CommandPalette';
 import ShortcutEditor from './components/ShortcutEditor';
 import ShellIntegrationHint from './components/ShellIntegrationHint';
+import UpdateBanner from './components/UpdateBanner';
 import {
   TabInfo, SessionInfo,
   PaneNode,
@@ -368,6 +369,10 @@ function AppInner() {
         shortcut: bindings['palette-toggle'], handler: () => setPaletteVisible((v) => !v),
       },
       {
+        id: 'check-updates', label: 'Check for Updates', category: 'General',
+        handler: () => { window.jterm.checkForUpdates().catch(() => {}); },
+      },
+      {
         id: 'theme-tokyo-night', label: 'Theme: Tokyo Night', category: 'Theme',
         handler: () => persistTheme('tokyo-night'),
       },
@@ -495,6 +500,7 @@ function AppInner() {
         onClose={() => setPaletteVisible(false)}
         actions={paletteActions}
       />
+      <UpdateBanner />
     </div>
   );
 }

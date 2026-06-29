@@ -5,6 +5,7 @@ import { SSHManager } from './ssh';
 import { FileSystemManager } from './filesystem';
 import { GitManager } from './git';
 import { SettingsManager } from './settings';
+import { initUpdater, checkForUpdates } from './updater';
 
 let mainWindow: BrowserWindow | null = null;
 let terminalManager: TerminalManager;
@@ -73,6 +74,13 @@ app.whenReady().then(() => {
 
   registerIpcHandlers();
   createWindow();
+
+  // Initialize auto-updater
+  if (mainWindow) {
+    initUpdater(mainWindow);
+    // Check for updates after a short delay so the app is fully settled
+    setTimeout(() => checkForUpdates(true), 5000);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
