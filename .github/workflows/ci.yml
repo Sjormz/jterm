@@ -75,7 +75,7 @@ jobs:
         run: npm run build
 
       - name: Package installer
-        run: npx electron-builder ${{ matrix.build-args }}
+        run: npx electron-builder ${{ matrix.build-args }} --publish never
 
   # ─────────────────────────────────────────────────────────
   # 3. Release — build + publish on tag push (v*)
