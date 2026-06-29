@@ -16,6 +16,7 @@ autoUpdater.autoInstallOnAppQuit = true;
 
 let mainWindowRef: BrowserWindow | null = null;
 let updateInfo: UpdateInfo | null = null;
+let suppressNoUpdateNotice = false;
 
 function send(channel: string, ...args: unknown[]) {
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
@@ -42,7 +43,7 @@ export function initUpdater(mainWindow: BrowserWindow) {
   ipcMain.handle('update:download', async () => {
     if (!updateInfo) return { success: false, error: 'No update available' };
     try {
-      autoUpdater.downloadUpdate();
+      await autoUpdater.downloadUpdate();
       return { success: true };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -61,7 +62,7 @@ export function initUpdater(mainWindow: BrowserWindow) {
   // Register event handlers
   autoUpdater.on('checking-for-update', () => {
     console.log('[updater] checking-for-update');
-    send('update:checking');
+    if (!suppressNoUpdateNotice) send('update:checking');
   });
 
   autoUpdater.on('update-available', (info: UpdateInfo) => {
@@ -77,7 +78,7 @@ export function initUpdater(mainWindow: BrowserWindow) {
   autoUpdater.on('update-not-available', (info: UpdateInfo) => {
     console.log('[updater] update-not-available (current: ' + info.version + ')');
     updateInfo = null;
-    send('update:not-available');
+    if (!suppressNoUpdateNotice) send('update:not-available');
   });
 
   autoUpdater.on('download-progress', (progress: ProgressInfo) => {
@@ -104,12 +105,11 @@ export function initUpdater(mainWindow: BrowserWindow) {
 
 /** Check for updates now (call after app is ready, optionally delayed). */
 export function checkForUpdates(silent = false) {
-  if (silent) {
-    // In silent mode, don't show "checking" or "not available" to the user
-    // We still rely on the 'update-available' event
-  }
+  suppressNoUpdateNotice = silent;
   autoUpdater.checkForUpdates().catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[updater] initial check failed:', message);
+  }).finally(() => {
+    suppressNoUpdateNotice = false;
   });
 }

@@ -131,6 +131,7 @@
       ],
       "icon": "assets/icon.png",
       "artifactName": "${productName}-${version}-linux-x64.${ext}",
+      "maintainer": "pckpr <pckpr@users.noreply.github.com>",
       "category": "TerminalEmulator",
       "synopsis": "A powerful cross-platform terminal emulator",
       "description": "JTerm - A powerful cross-platform terminal with file explorer, SSH, and git tree",
