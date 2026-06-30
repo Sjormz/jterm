@@ -22,6 +22,8 @@ interface SplitPaneProps {
   onTerminalFocus?: (termId: string) => void;
   /** The initial cwd for newly-created local terminals. */
   initialCwd?: string;
+  /** Returns true when the given leafId already has a live PTY/session. */
+  hasSessionForLeaf?: (leafId: string) => boolean;
 }
 
 /** Wraps a TerminalLeaf with split/close action buttons */
@@ -39,6 +41,7 @@ function TerminalPaneLeaf({
   onCwdChange,
   onTerminalFocus,
   initialCwd,
+  hasSessionForLeaf,
 }: {
   leaf: TerminalLeaf;
   tabType: 'local' | 'ssh';
@@ -53,6 +56,7 @@ function TerminalPaneLeaf({
   onCwdChange?: (termId: string, cwd: string) => void;
   onTerminalFocus?: (termId: string) => void;
   initialCwd?: string;
+  hasSessionForLeaf?: (leafId: string) => boolean;
 }) {
   return (
     <div className="terminal-leaf">
@@ -82,6 +86,7 @@ function TerminalPaneLeaf({
           onCwdChange={onCwdChange}
           onFocus={onTerminalFocus}
           initialCwd={initialCwd}
+          hasSession={hasSessionForLeaf?.(leaf.id)}
         />
       </div>
     </div>
@@ -191,6 +196,7 @@ export default function SplitPane(props: SplitPaneProps) {
     node, tabId, tabType, sshSessionId, onTerminalReady, onTerminalRemoved,
     onSplitPane, onClosePane, themeName, fontSize,
     onCwdChange, onTerminalFocus, initialCwd,
+    hasSessionForLeaf,
   } = props;
 
   if (node.type === 'leaf') {
@@ -209,6 +215,7 @@ export default function SplitPane(props: SplitPaneProps) {
         onCwdChange={onCwdChange}
         onTerminalFocus={onTerminalFocus}
         initialCwd={initialCwd}
+        hasSessionForLeaf={hasSessionForLeaf}
       />
     );
   }
@@ -240,6 +247,7 @@ export default function SplitPane(props: SplitPaneProps) {
               onCwdChange={onCwdChange}
               onTerminalFocus={onTerminalFocus}
               initialCwd={initialCwd}
+              hasSessionForLeaf={hasSessionForLeaf}
             />
           </div>
         </React.Fragment>
