@@ -27,6 +27,7 @@ export function runCleanup(entries: unknown[]): void {
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import SearchOverlay from './SearchOverlay';
+import SSHConnectionNotice from './SSHConnectionNotice';
 import { getTheme, ThemeName } from '../themes';
 import { useKeybindings } from '../KeybindingsContext';
 import { matchesShortcut } from '../keybindings';
@@ -37,6 +38,7 @@ interface TerminalPaneProps {
   termId: string;
   tabType: 'local' | 'ssh';
   sshSessionId?: string;
+  sshSessionLabel?: string;
   onReady: (termId: string) => void;
   onRemoved: (termId: string) => void;
   themeName?: string;
@@ -56,6 +58,7 @@ export default function TerminalPane({
   termId,
   tabType,
   sshSessionId,
+  sshSessionLabel,
   onReady,
   onRemoved,
   themeName,
@@ -65,6 +68,7 @@ export default function TerminalPane({
   initialCwd,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
@@ -73,10 +77,12 @@ export default function TerminalPane({
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState({ resultIndex: 0, resultCount: 0 });
+  const [showSshNotice, setShowSshNotice] = useState(tabType === 'ssh');
   const searchVisibleRef = useRef(false);
   searchVisibleRef.current = searchVisible;
 
   const { bindings: kbBindings } = useKeybindings();
+
   const kbBindingsRef = useRef(kbBindings);
   kbBindingsRef.current = kbBindings;
 
@@ -103,6 +109,7 @@ export default function TerminalPane({
     };
     searchAddonRef.current[dir === 'next' ? 'findNext' : 'findPrevious'](query, options);
   };
+
 
   useEffect(() => {
     const container = containerRef.current;
@@ -171,6 +178,7 @@ export default function TerminalPane({
         rows: dims?.rows || 24,
       }).then(() => {
         onReady(termId);
+        term.focus();
       }).catch(console.error);
     }
 
@@ -278,12 +286,16 @@ export default function TerminalPane({
     // consumes it before it ever reaches the visible buffer).
     const cleanupListener = window.janet.onTerminalData(({ id, data }) => {
       if (id === termId) {
+        if (tabType === 'ssh') {
+          setShowSshNotice(false);
+        }
         term.write(data);
       }
     });
     cleanupRef.current.push(cleanupListener);
 
     // Intercept keyboard shortcuts before xterm processes them
+
     term.attachCustomKeyEventHandler((e) => {
       const currentBindings = kbBindingsRef.current;
       // Check search-toggle shortcut (default Ctrl+F)
@@ -309,8 +321,7 @@ export default function TerminalPane({
       fitAddonRef.current = null;
       searchAddonRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [termId, tabType, sshSessionId, initialCwd, onReady, onRemoved, onFocus, onCwdChange]);
 
   // Update xterm theme when themeName changes
   useEffect(() => {
@@ -362,6 +373,7 @@ export default function TerminalPane({
         onPrev={() => doSearch(searchQuery, 'prev')}
         onClose={closeSearch}
       />
+      <SSHConnectionNotice visible={showSshNotice} label={sshSessionLabel} />
     </div>
   );
 }

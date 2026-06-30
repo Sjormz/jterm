@@ -544,6 +544,48 @@ html, body, #root {
   background-clip: padding-box;
 }
 
+.ssh-terminal-notice {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(420px, calc(100% - 24px));
+  padding: 10px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(160%);
+  box-shadow: var(--glass-shadow);
+  color: var(--text-primary);
+  pointer-events: none;
+  animation: search-slide-in 0.15s ease-out;
+}
+.ssh-terminal-notice-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--text-accent);
+}
+.ssh-terminal-notice-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.ssh-terminal-notice-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ssh-terminal-notice-subtitle {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 /* === File Explorer === */
 .file-explorer { display: flex; flex-direction: column; height: 100%; }
 .explorer-header {
