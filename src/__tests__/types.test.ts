@@ -55,6 +55,24 @@ describe('splitPane', () => {
     }
   });
 
+  it('splits a single-child split root without nesting a new split', () => {
+    const leaf = createLeaf();
+    const tree: PaneNode = {
+      id: 'split-root', type: 'split', direction: 'vertical',
+      children: [leaf], sizes: [1],
+    };
+
+    const result = splitPane(tree, leaf.id, 'horizontal');
+
+    expect(result.type).toBe('split');
+    if (result.type === 'split') {
+      expect(result.children).toHaveLength(2);
+      expect(result.children[0].id).toBe(leaf.id);
+      expect(result.children[1].type).toBe('leaf');
+      expect(result.sizes).toEqual([1, 1]);
+    }
+  });
+
   it('splits a leaf nested inside a split tree', () => {
     // Create a tree: split -> [leafA, leafB]
     const leafA = createLeaf();
