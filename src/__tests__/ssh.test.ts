@@ -94,8 +94,15 @@ describe('SSHManager', () => {
   });
 
   it('queues writes until the SSH shell stream exists', async () => {
-    let shellCallback: ((err: Error | undefined, stream?: MockShellStream) => void) | null = null;
-    mocks.shellMock.mockImplementation((opts: unknown, cb: typeof shellCallback) => {
+    type ShellCallback = Parameters<typeof mocks.shellMock.mockImplementation>[0] extends (
+      opts: unknown,
+      cb: infer Callback,
+    ) => unknown
+      ? Callback
+      : never;
+
+    let shellCallback: ShellCallback | null = null;
+    mocks.shellMock.mockImplementation((opts: unknown, cb: ShellCallback) => {
       shellCallback = cb;
     });
 
