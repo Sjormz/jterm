@@ -119,6 +119,14 @@ jobs:
           name: ${{ github.ref_name }}
           generate_release_notes: true
           overwrite_files: true
-          files: release-artifacts/**/*
+          files: |
+            release-artifacts/*/release/JaneT-Setup-*.exe
+            release-artifacts/*/release/JaneT-Setup-*.exe.blockmap
+            release-artifacts/*/release/JaneT-Portable-*.exe
+            release-artifacts/*/release/JaneT-*-mac-*.dmg
+            release-artifacts/*/release/JaneT-*-mac-*.zip
+            release-artifacts/*/release/JaneT-*-linux-*.AppImage
+            release-artifacts/*/release/JaneT-*-linux-*.deb
+            release-artifacts/*/release/latest*.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
