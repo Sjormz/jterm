@@ -1,7 +1,7 @@
-import { JTermAPI } from '../main/preload';
+import { JanetAPI } from '../main/preload';
 
 declare global {
   interface Window {
-    jterm: JTermAPI;
+    janet: JanetAPI;
   }
 }

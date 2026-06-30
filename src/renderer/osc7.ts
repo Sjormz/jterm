@@ -23,7 +23,7 @@
  *
  * The payload has the form `file://HOSTNAME/PATH`. Examples:
  *   file://localhost/home/alice                 → /home/alice
- *   file://localhost/C:/Users/pckpr             → C:/Users/pckpr
+ *   file://localhost/C:/Users/sjorm             → C:/Users/sjorm
  *   file://localhost/home/alice/My%20Dir        → /home/alice/My Dir
  *   file://host/path                            → /path
  *   not-a-url                                   → null

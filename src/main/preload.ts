@@ -115,6 +115,6 @@ const api = {
   },
 };
 
-contextBridge.exposeInMainWorld('jterm', api);
+contextBridge.exposeInMainWorld('janet', api);
 
-export type JTermAPI = typeof api;
+export type JanetAPI = typeof api;

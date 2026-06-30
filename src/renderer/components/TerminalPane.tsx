@@ -20,7 +20,7 @@ export function runCleanup(entries: unknown[]): void {
         (entry as { dispose: () => void }).dispose();
       }
     } catch (e) {
-      console.warn('[JTerm] cleanup error:', e);
+      console.warn('[JaneT] cleanup error:', e);
     }
   }
 }
@@ -159,12 +159,12 @@ export default function TerminalPane({
 
     // Create terminal session based on type
     if (tabType === 'local') {
-      window.jterm.terminalCreate({ id: termId }).then(() => {
+      window.janet.terminalCreate({ id: termId }).then(() => {
         onReady(termId);
       }).catch(console.error);
     } else if (tabType === 'ssh' && sshSessionId) {
       const dims = fitAddon.proposeDimensions();
-      window.jterm.sshCreateShell({
+      window.janet.sshCreateShell({
         id: sshSessionId,
         termId,
         cols: dims?.cols || 80,
@@ -177,9 +177,9 @@ export default function TerminalPane({
     // Terminal input -> PTY
     const disposable = term.onData((data) => {
       if (tabType === 'local') {
-        window.jterm.terminalWrite({ id: termId, data });
+        window.janet.terminalWrite({ id: termId, data });
       } else if (tabType === 'ssh') {
-        window.jterm.sshWriteShell({ termId, data });
+        window.janet.sshWriteShell({ termId, data });
       }
     });
     cleanupRef.current.push(() => disposable.dispose());
@@ -203,9 +203,9 @@ export default function TerminalPane({
           const dims = fitAddon.proposeDimensions();
           if (dims) {
             if (tabType === 'local') {
-              window.jterm.terminalResize({ id: termId, cols: dims.cols, rows: dims.rows });
+              window.janet.terminalResize({ id: termId, cols: dims.cols, rows: dims.rows });
             } else if (tabType === 'ssh') {
-              window.jterm.sshResizeShell({ termId, cols: dims.cols, rows: dims.rows });
+              window.janet.sshResizeShell({ termId, cols: dims.cols, rows: dims.rows });
             }
           }
         } catch {}
@@ -276,7 +276,7 @@ export default function TerminalPane({
 
     // PTY output -> xterm (no longer needs to strip OSC 7 — xterm
     // consumes it before it ever reaches the visible buffer).
-    const cleanupListener = window.jterm.onTerminalData(({ id, data }) => {
+    const cleanupListener = window.janet.onTerminalData(({ id, data }) => {
       if (id === termId) {
         term.write(data);
       }

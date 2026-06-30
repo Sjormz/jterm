@@ -26,7 +26,7 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
     setError(null);
     const sessionId = `ssh-${Date.now()}`;
     try {
-      await window.jterm.sshConnect({
+      await window.janet.sshConnect({
         id: sessionId,
         host,
         port: parseInt(port) || 22,
@@ -47,7 +47,7 @@ export default function SSHManager({ sshSessions, onConnected, onDisconnected }:
 
   const handleDisconnect = async (sessionId: string) => {
     try {
-      await window.jterm.sshDisconnect({ id: sessionId });
+      await window.janet.sshDisconnect({ id: sessionId });
       onDisconnected(sessionId);
     } catch {}
   };

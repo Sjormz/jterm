@@ -7,7 +7,7 @@ describe('fileUrlToPath', () => {
   });
 
   it('decodes a Windows file:// URL (C:/...)', () => {
-    expect(fileUrlToPath('file://localhost/C:/Users/pckpr')).toBe('C:/Users/pckpr');
+    expect(fileUrlToPath('file://localhost/C:/Users/sjorm')).toBe('C:/Users/sjorm');
   });
 
   it('decodes percent-encoded paths', () => {
@@ -15,7 +15,7 @@ describe('fileUrlToPath', () => {
   });
 
   it('decodes percent-encoded characters in Windows paths', () => {
-    expect(fileUrlToPath('file://localhost/C:/Program%20Files/JTerm')).toBe('C:/Program Files/JTerm');
+    expect(fileUrlToPath('file://localhost/C:/Program%20Files/JaneT')).toBe('C:/Program Files/JaneT');
   });
 
   it('handles a hostname other than localhost', () => {

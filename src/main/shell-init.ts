@@ -3,7 +3,7 @@ import * as path from 'path';
 /**
  * Returns a small shell-init snippet that, when sourced/eval'd by the
  * shell at startup, makes the shell emit an OSC 7 escape sequence
- * (file://HOST/PATH) before every prompt. JTerm's renderer listens for
+ * (file://HOST/PATH) before every prompt. JaneT's renderer listens for
  * OSC 7 via xterm's parser to keep the file-explorer / git-tree /
  * status-bar cwd in sync with the focused terminal.
  *

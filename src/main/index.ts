@@ -16,7 +16,7 @@ let settingsManager: SettingsManager;
 
 function createWindow() {
   // Remove the default application menu (File / Edit / View / Window).
-  // JTerm uses a fully custom in-renderer titlebar.
+  // JaneT uses a fully custom in-renderer titlebar.
   Menu.setApplicationMenu(null);
 
   mainWindow = new BrowserWindow({
@@ -24,7 +24,7 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    title: 'JTerm',
+    title: 'JaneT',
     backgroundColor: '#0f0f1a',
     autoHideMenuBar: true,
     // Remove the OS-level window chrome — the custom in-renderer titlebar

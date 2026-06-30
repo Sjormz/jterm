@@ -1,4 +1,4 @@
-"""Generate JTerm app icons (PNG, ICO) using Pillow."""
+"""Generate JaneT app icons (PNG, ICO) using Pillow."""
 from PIL import Image, ImageDraw, ImageFont
 import os, struct
 

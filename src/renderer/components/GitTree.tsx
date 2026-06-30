@@ -44,7 +44,7 @@ export default function GitTree({ cwd, cwdReady, isRemote }: GitTreeProps) {
   useEffect(() => {
     if (!cwd) return;
     setSearching(true);
-    window.jterm.gitFindRepo({ startPath: cwd }).then((repo) => {
+    window.janet.gitFindRepo({ startPath: cwd }).then((repo) => {
       setRepoPath(repo);
       setSearching(false);
       if (repo) loadGitData(repo);
@@ -55,8 +55,8 @@ export default function GitTree({ cwd, cwdReady, isRemote }: GitTreeProps) {
   const loadGitData = async (repo: string) => {
     try {
       const [statusResult, branchesResult] = await Promise.all([
-        window.jterm.gitStatus({ repoPath: repo }),
-        window.jterm.gitBranches({ repoPath: repo }),
+        window.janet.gitStatus({ repoPath: repo }),
+        window.janet.gitBranches({ repoPath: repo }),
       ]);
       if (statusResult) setStatus(statusResult);
       if (branchesResult) setBranches(branchesResult);
@@ -66,7 +66,7 @@ export default function GitTree({ cwd, cwdReady, isRemote }: GitTreeProps) {
   const handleCheckout = async (branchName: string) => {
     if (!repoPath) return;
     try {
-      await window.jterm.gitCheckout({ repoPath, branch: branchName });
+      await window.janet.gitCheckout({ repoPath, branch: branchName });
       loadGitData(repoPath);
     } catch {}
   };

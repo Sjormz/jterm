@@ -19,19 +19,19 @@ export default function UpdateBanner(_props: UpdateBannerProps) {
 
     // Start in checking state only after the initial silent check triggers
     unsubs.push(
-      window.jterm.onUpdateChecking(() => {
+      window.janet.onUpdateChecking(() => {
         setState({ status: 'checking' });
       }),
     );
 
     unsubs.push(
-      window.jterm.onUpdateAvailable((info) => {
+      window.janet.onUpdateAvailable((info) => {
         setState({ status: 'available', version: info.version });
       }),
     );
 
     unsubs.push(
-      window.jterm.onUpdateNotAvailable(() => {
+      window.janet.onUpdateNotAvailable(() => {
         setState({ status: 'not-available' });
         // Auto-dismiss after a moment
         const timer = setTimeout(() => setState({ status: 'idle' }), 3000);
@@ -40,19 +40,19 @@ export default function UpdateBanner(_props: UpdateBannerProps) {
     );
 
     unsubs.push(
-      window.jterm.onUpdateDownloadProgress((progress) => {
+      window.janet.onUpdateDownloadProgress((progress) => {
         setState({ status: 'downloading', percent: progress.percent });
       }),
     );
 
     unsubs.push(
-      window.jterm.onUpdateDownloaded((info) => {
+      window.janet.onUpdateDownloaded((info) => {
         setState({ status: 'downloaded', version: info.version });
       }),
     );
 
     unsubs.push(
-      window.jterm.onUpdateError((error) => {
+      window.janet.onUpdateError((error) => {
         setState({ status: 'error', message: error.message });
         // Auto-dismiss errors after 10s
         const timer = setTimeout(() => setState({ status: 'idle' }), 10000);
@@ -64,11 +64,11 @@ export default function UpdateBanner(_props: UpdateBannerProps) {
   }, []);
 
   const handleDownload = useCallback(() => {
-    window.jterm.downloadUpdate().catch(() => {});
+    window.janet.downloadUpdate().catch(() => {});
   }, []);
 
   const handleInstall = useCallback(() => {
-    window.jterm.installUpdate().catch(() => {});
+    window.janet.installUpdate().catch(() => {});
   }, []);
 
   const handleDismiss = useCallback(() => {
@@ -76,7 +76,7 @@ export default function UpdateBanner(_props: UpdateBannerProps) {
   }, []);
 
   const handleForceCheck = useCallback(() => {
-    window.jterm.checkForUpdates().catch(() => {});
+    window.janet.checkForUpdates().catch(() => {});
   }, []);
 
   if (state.status === 'idle') return null;

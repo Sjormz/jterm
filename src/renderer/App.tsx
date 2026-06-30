@@ -45,7 +45,7 @@ function AppInner() {
   // has arrived or for SSH tabs.
   const [homeDir, setHomeDir] = useState<string>('');
   useEffect(() => {
-    try { window.jterm.fsGetHome().then(setHomeDir).catch(() => {}); } catch {}
+    try { window.janet.fsGetHome().then(setHomeDir).catch(() => {}); } catch {}
   }, []);
 
   // Settings state
@@ -61,7 +61,7 @@ function AppInner() {
     settingsLoadedRef.current = true;
 
     try {
-      window.jterm.getSettings().then((s: any) => {
+      window.janet.getSettings().then((s: any) => {
         setCurrentTheme(s.theme || 'tokyo-night');
         setFontSize(s.fontSize || 14);
         applyCssTheme(getTheme(s.theme || 'tokyo-night').css);
@@ -87,17 +87,17 @@ function AppInner() {
   // Persist settings when changed
   const persistTheme = useCallback((theme: ThemeName) => {
     setCurrentTheme(theme);
-    try { window.jterm.setSettings({ theme }).catch(() => {}); } catch {}
+    try { window.janet.setSettings({ theme }).catch(() => {}); } catch {}
   }, []);
 
   const persistFontSize = useCallback((size: number) => {
     setFontSize(size);
-    try { window.jterm.setSettings({ fontSize: size }).catch(() => {}); } catch {}
+    try { window.janet.setSettings({ fontSize: size }).catch(() => {}); } catch {}
   }, []);
 
   // Persist keybindings when they change
   const handleKeybindingsChange = useCallback((newBindings: Record<KeybindingAction, string>) => {
-    try { window.jterm.setSettings({ keybindings: newBindings }).catch(() => {}); } catch {}
+    try { window.janet.setSettings({ keybindings: newBindings }).catch(() => {}); } catch {}
   }, []);
 
   const getTab = useCallback(
@@ -144,7 +144,7 @@ function AppInner() {
         next.delete(termId);
         return next;
       });
-      window.jterm.terminalDestroy({ id: termId }).catch(() => {});
+      window.janet.terminalDestroy({ id: termId }).catch(() => {});
     },
     [],
   );
@@ -176,7 +176,7 @@ function AppInner() {
         const tab = prev.find((t) => t.id === tabId);
         if (tab) {
           for (const leafId of getAllLeafIds(tab.root)) {
-            window.jterm.terminalDestroy({ id: leafId }).catch(() => {});
+            window.janet.terminalDestroy({ id: leafId }).catch(() => {});
           }
         }
 
@@ -370,7 +370,7 @@ function AppInner() {
       },
       {
         id: 'check-updates', label: 'Check for Updates', category: 'General',
-        handler: () => { window.jterm.checkForUpdates().catch(() => {}); },
+        handler: () => { window.janet.checkForUpdates().catch(() => {}); },
       },
       {
         id: 'theme-tokyo-night', label: 'Theme: Tokyo Night', category: 'Theme',
@@ -511,7 +511,7 @@ export default function App() {
   // Load saved keybindings from settings before rendering
   useEffect(() => {
     try {
-      window.jterm.getSettings().then((s: any) => {
+      window.janet.getSettings().then((s: any) => {
         if (s.keybindings) {
           setBindings(s.keybindings as Record<KeybindingAction, string>);
         } else {
@@ -525,7 +525,7 @@ export default function App() {
 
   // Persist keybindings to main process
   const handleSave = useCallback((b: Record<KeybindingAction, string>) => {
-    try { window.jterm.setSettings({ keybindings: b }).catch(() => {}); } catch {}
+    try { window.janet.setSettings({ keybindings: b }).catch(() => {}); } catch {}
   }, []);
 
   // Don't render until bindings are loaded (avoids flash of defaults)

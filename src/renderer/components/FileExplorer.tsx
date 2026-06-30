@@ -51,7 +51,7 @@ export default function FileExplorer({ cwd, cwdReady, isRemote }: FileExplorerPr
     setLoading(true);
     setError(null);
     try {
-      const result = await window.jterm.fsListDir({ dirPath, showHidden });
+      const result = await window.janet.fsListDir({ dirPath, showHidden });
       setEntries(result);
     } catch (err: any) {
       setError(err.message || 'Failed to list directory');

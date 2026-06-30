@@ -12,7 +12,7 @@ const distMain = path.join(root, 'dist/main');
 const logPath = path.join(root, '.dev-run.log');
 try { fs.unlinkSync(logPath); } catch {}
 const log = (msg) => {
-  const line = `[JTerm dev ${new Date().toISOString()}] ${msg}\n`;
+  const line = `[JaneT dev ${new Date().toISOString()}] ${msg}\n`;
   fs.appendFileSync(logPath, line);
   process.stdout.write(line);
 };
@@ -84,6 +84,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[JTerm] Error:', err);
+  console.error('[JaneT] Error:', err);
   process.exit(1);
 });

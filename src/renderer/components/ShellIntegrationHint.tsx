@@ -30,7 +30,7 @@ import React, { useState } from 'react';
 // module (Vite/esbuild treats it as a deprecated octal escape). We
 // use \u001b instead — same character, allowed in module code.
 const BASH_SNIPPET = (
-  '# JTerm auto-injects a PROMPT_COMMAND that emits OSC 7.\n' +
+  '# JaneT auto-injects a PROMPT_COMMAND that emits OSC 7.\n' +
   '# To make bash in other terminals (e.g. VS Code) also track cwd,\n' +
   '# add the following to your ~/.bashrc:\n' +
   '__jt_osc7() { printf "\u001b]7;file://%s%s\u001b\\" "${HOSTNAME:-localhost}" "$PWD"; }\n' +
@@ -38,14 +38,14 @@ const BASH_SNIPPET = (
 );
 
 const ZSH_SNIPPET = (
-  '# JTerm auto-injects a precmd hook that emits OSC 7.\n' +
+  '# JaneT auto-injects a precmd hook that emits OSC 7.\n' +
   '# To make zsh in other terminals (e.g. VS Code) also track cwd,\n' +
   '# add the following to ~/.zshrc:\n' +
   "precmd() { print -Pn '\\e]7;file://%m%d\\a' }"
 );
 
 const FISH_SNIPPET = (
-  '# JTerm auto-injects a fish_prompt hook that emits OSC 7.\n' +
+  '# JaneT auto-injects a fish_prompt hook that emits OSC 7.\n' +
   '# To make fish in other terminals also track cwd, add the\n' +
   '# following to ~/.config/fish/config.fish:\n' +
   'function __jt_osc7 --on-event fish_prompt\n' +
@@ -54,7 +54,7 @@ const FISH_SNIPPET = (
 );
 
 const POWERSHELL_SNIPPET = (
-  '# JTerm auto-injects a prompt function that emits OSC 7.\n' +
+  '# JaneT auto-injects a prompt function that emits OSC 7.\n' +
   '# This is the equivalent snippet to put in your $PROFILE if you\n' +
   "# want other terminals (e.g. VS Code, Windows Terminal) to track cwd too:\n" +
   'function global:prompt {\n' +
@@ -107,8 +107,8 @@ export default function ShellIntegrationHint() {
       <div className="theme-section">
         <h3 className="theme-section-title">Shell Integration</h3>
         <p className="hint-description">
-          JTerm follows the working directory of the focused terminal by parsing
-          OSC&nbsp;7 escape sequences. JTerm auto-injects the right prompt hook
+          JaneT follows the working directory of the focused terminal by parsing
+          OSC&nbsp;7 escape sequences. JaneT auto-injects the right prompt hook
           for each shell, so this works out of the box. The snippets below are
           for reference or for if you want to copy them into your own config to
           make other terminals (e.g. VS Code's integrated terminal) track cwd

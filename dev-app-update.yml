@@ -5,5 +5,5 @@
 # package.json version and point provider/owner/repo to a test repo with a release.
 provider: github
 owner: Sjormz
-repo: jterm
+repo: JaneT
 releaseType: release

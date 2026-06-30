@@ -1,7 +1,7 @@
 {
-  "name": "jterm",
-  "version": "0.2.0",
-  "description": "JTerm - A powerful cross-platform terminal with file explorer, SSH, and git tree",
+  "name": "janet",
+  "version": "0.1.0",
+  "description": "JaneT - A powerful cross-platform terminal with file explorer, SSH, and git tree",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -22,8 +22,8 @@
     "publish:linux": "npm run build && npx electron-builder --linux --publish always"
   },
   "build": {
-    "appId": "com.pckpr.jterm",
-    "productName": "JTerm",
+    "appId": "com.sjorm.janet",
+    "productName": "JaneT",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
@@ -63,7 +63,7 @@
       "installerHeaderIcon": "assets/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "JTerm",
+      "shortcutName": "JaneT",
       "deleteAppDataOnUninstall": false,
       "displayLanguageSelector": false,
       "unicode": true
@@ -131,16 +131,16 @@
       ],
       "icon": "assets/icon.png",
       "artifactName": "${productName}-${version}-linux-x64.${ext}",
-      "maintainer": "pckpr <pckpr@users.noreply.github.com>",
+      "maintainer": "sjorm <sjorm@users.noreply.github.com>",
       "category": "TerminalEmulator",
       "synopsis": "A powerful cross-platform terminal emulator",
-      "description": "JTerm - A powerful cross-platform terminal with file explorer, SSH, and git tree",
-      "executableName": "jterm"
+      "description": "JaneT - A powerful cross-platform terminal with file explorer, SSH, and git tree",
+      "executableName": "janet"
     },
     "publish": {
       "provider": "github",
       "owner": "Sjormz",
-      "repo": "jterm",
+      "repo": "JaneT",
       "releaseType": "release"
     }
   },
@@ -150,7 +150,7 @@
     "file-explorer",
     "git"
   ],
-  "author": "pckpr <pckpr@users.noreply.github.com>",
+  "author": "sjorm <sjorm@users.noreply.github.com>",
   "license": "MIT",
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",

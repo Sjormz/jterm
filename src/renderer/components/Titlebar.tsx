@@ -56,7 +56,7 @@ export default function Titlebar({
   const [maximized, setMaximized] = useState(false);
 
   const refreshMaximized = useCallback(async () => {
-    try { setMaximized(await window.jterm.windowIsMaximized()); } catch {}
+    try { setMaximized(await window.janet.windowIsMaximized()); } catch {}
   }, []);
 
   useEffect(() => { refreshMaximized(); }, [refreshMaximized]);
@@ -83,7 +83,7 @@ export default function Titlebar({
             <line x1="12" y1="19" x2="20" y2="19" />
           </svg>
         </div>
-        <span className="titlebar-app-name">JTerm</span>
+        <span className="titlebar-app-name">JaneT</span>
       </div>
 
       {/* Section nav (was ActivityBar) */}
@@ -170,7 +170,7 @@ export default function Titlebar({
         <div className="titlebar-controls">
           <button
             className="titlebar-control-btn"
-            onClick={() => window.jterm.windowMinimize()}
+            onClick={() => window.janet.windowMinimize()}
             title="Minimize"
             aria-label="Minimize"
           >
@@ -178,7 +178,7 @@ export default function Titlebar({
           </button>
           <button
             className="titlebar-control-btn"
-            onClick={() => { window.jterm.windowMaximize().then(refreshMaximized); }}
+            onClick={() => { window.janet.windowMaximize().then(refreshMaximized); }}
             title={maximized ? 'Restore' : 'Maximize'}
             aria-label={maximized ? 'Restore' : 'Maximize'}
           >
@@ -186,7 +186,7 @@ export default function Titlebar({
           </button>
           <button
             className="titlebar-control-btn close"
-            onClick={() => window.jterm.windowClose()}
+            onClick={() => window.janet.windowClose()}
             title="Close"
             aria-label="Close"
           >

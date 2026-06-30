@@ -24,7 +24,7 @@ export default function StatusBar({
     <div className="status-bar">
       <div className="status-left">
         <span className="status-item">
-          <TerminalTabIcon size="xs" /> JTerm v0.1.0
+          <TerminalTabIcon size="xs" /> JaneT v0.1.0
         </span>
         {sshSessions.length > 0 && (
           <span className="status-item">

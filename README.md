@@ -1,8 +1,8 @@
-# JTerm
+# JaneT
 
 A powerful, cross-platform terminal with built-in file explorer, SSH remote file browsing, and git tree visualization.
 
-Built by pckpr, for pckpr.
+Built by sjorm, for sjorm.
 
 ## Features
 
@@ -38,7 +38,7 @@ This starts the Vite dev server for hot-reload, then launches Electron.
 ## Architecture
 
 ```
-jterm/
+janet/
 ├── src/
 │   ├── main/              # Electron main process
 │   │   ├── index.ts       # App entry, IPC handlers
