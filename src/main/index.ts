@@ -128,13 +128,13 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('ssh:createShell', (event, { id, termId, cols, rows }) => {
-    const stream = sshManager.createShell(id, termId, { cols, rows });
-    stream.onData((data) => {
+    const shell = sshManager.createShell(id, termId, { cols, rows });
+    shell.onData((data) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('terminal:onData', { id: termId, data });
       }
     });
-    return { connected: true };
+    return shell.ready.then(() => ({ connected: true }));
   });
 
   ipcMain.handle('ssh:writeShell', (event, { termId, data }) => {

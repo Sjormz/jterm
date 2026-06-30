@@ -1,5 +1,4 @@
 import { Client, ClientChannel } from 'ssh2';
-import * as path from 'path';
 
 interface SSHConnection {
   client: Client;
@@ -10,6 +9,12 @@ interface SSHConnection {
     username: string;
   };
   shells: Map<string, ClientChannel>;
+  pendingWrites: Map<string, string[]>;
+}
+
+interface SSHShellHandle {
+  onData: (cb: (data: string) => void) => void;
+  ready: Promise<void>;
 }
 
 export class SSHManager {
@@ -32,6 +37,7 @@ export class SSHManager {
           id,
           config: { host: config.host, port: config.port, username: config.username },
           shells: new Map(),
+          pendingWrites: new Map(),
         });
         resolve();
       });
@@ -57,67 +63,104 @@ export class SSHManager {
     });
   }
 
-  createShell(sessionId: string, termId: string, size: { cols: number; rows: number }): { onData: (cb: (data: string) => void) => void } {
+  createShell(sessionId: string, termId: string, size: { cols: number; rows: number }): SSHShellHandle {
     const conn = this.connections.get(sessionId);
     if (!conn) throw new Error(`SSH session ${sessionId} not found`);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const client: any = conn.client;
-    const stream = client.shell({
-      cols: size.cols,
-      rows: size.rows,
-      term: 'xterm-256color',
+    const callbacks: Array<(data: string) => void> = [];
+    const pendingChunks: string[] = [];
+    let resolveReady: (() => void) | null = null;
+    let rejectReady: ((err: Error) => void) | null = null;
+
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
     });
 
-    const callbacks: Array<(data: string) => void> = [];
+    const dispatch = (str: string) => {
+      if (callbacks.length === 0) {
+        pendingChunks.push(str);
+        return;
+      }
 
-    stream.on('data', (data: Buffer) => {
-      const str = data.toString('utf-8');
       for (const cb of callbacks) {
         cb(str);
       }
-    });
+    };
 
-    if (stream.stderr) {
-      stream.stderr.on('data', (data: Buffer) => {
-        const str = data.toString('utf-8');
-        for (const cb of callbacks) {
-          cb(str);
-        }
+    conn.client.shell({
+      cols: size.cols,
+      rows: size.rows,
+      term: 'xterm-256color',
+    }, (err, stream) => {
+      if (err || !stream) {
+        rejectReady?.(err || new Error('Failed to create SSH shell'));
+        return;
+      }
+
+      stream.on('data', (data: Buffer) => {
+        dispatch(data.toString('utf-8'));
       });
-    }
 
-    stream.on('close', () => {
-      conn.shells.delete(termId);
+      if (stream.stderr) {
+        stream.stderr.on('data', (data: Buffer) => {
+          dispatch(data.toString('utf-8'));
+        });
+      }
+
+      stream.on('close', () => {
+        conn.shells.delete(termId);
+        conn.pendingWrites.delete(termId);
+      });
+
+      conn.shells.set(termId, stream);
+
+      const queuedWrites = conn.pendingWrites.get(termId);
+      if (queuedWrites && queuedWrites.length > 0) {
+        for (const chunk of queuedWrites) {
+          stream.write(chunk);
+        }
+        conn.pendingWrites.delete(termId);
+      }
+
+      resolveReady?.();
     });
-
-    conn.shells.set(termId, stream);
 
     return {
       onData: (cb: (data: string) => void) => {
         callbacks.push(cb);
+        if (pendingChunks.length > 0) {
+          for (const chunk of pendingChunks) {
+            cb(chunk);
+          }
+          pendingChunks.length = 0;
+        }
       },
+      ready,
     };
   }
 
   writeShell(termId: string, data: string): void {
-    for (const [, conn] of this.connections) {
+    this.connections.forEach((conn) => {
       const shell = conn.shells.get(termId);
       if (shell) {
         shell.write(data);
         return;
       }
-    }
+      const queued = conn.pendingWrites.get(termId) || [];
+      queued.push(data);
+      conn.pendingWrites.set(termId, queued);
+    });
   }
 
   resizeShell(termId: string, cols: number, rows: number): void {
-    for (const [, conn] of this.connections) {
+    this.connections.forEach((conn) => {
       const shell = conn.shells.get(termId);
       if (shell) {
         shell.setWindow(rows, cols, 0, 0);
         return;
       }
-    }
+    });
   }
 
   async listDir(sessionId: string, remotePath: string): Promise<any[]> {
@@ -154,9 +197,10 @@ export class SSHManager {
   async disconnect(id: string): Promise<void> {
     const conn = this.connections.get(id);
     if (conn) {
-      for (const [, shell] of conn.shells) {
+      conn.shells.forEach((shell) => {
         try { shell.close(); } catch {}
-      }
+      });
+      conn.pendingWrites.clear();
       conn.client.end();
       this.connections.delete(id);
     }
@@ -164,20 +208,20 @@ export class SSHManager {
 
   listConnections(): Array<{ id: string; host: string; port: number; username: string }> {
     const result: Array<{ id: string; host: string; port: number; username: string }> = [];
-    for (const [, conn] of this.connections) {
+    this.connections.forEach((conn) => {
       result.push({
         id: conn.id,
         host: conn.config.host,
         port: conn.config.port,
         username: conn.config.username,
       });
-    }
+    });
     return result;
   }
 
   cleanup(): void {
-    for (const [id] of this.connections) {
+    this.connections.forEach((_, id) => {
       this.disconnect(id);
-    }
+    });
   }
 }
