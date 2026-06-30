@@ -69,6 +69,24 @@ export function splitPane(
     return tree; // not the target, no change
   }
 
+  // Special-case a single-child split root so splitting its lone leaf
+  // keeps the terminal mounted instead of nesting a new split node
+  // underneath the existing wrapper.
+  if (
+    tree.children.length === 1
+    && tree.children[0].type === 'leaf'
+    && tree.children[0].id === targetLeafId
+  ) {
+    return {
+      ...tree,
+      children: [
+        tree.children[0],
+        { id: genId('term'), type: 'leaf', title: 'terminal' },
+      ],
+      sizes: [1, 1],
+    };
+  }
+
   // It's a SplitNode — recurse into children
   const newChildren = tree.children.map((child) => splitPane(child, targetLeafId, direction));
   const changed = newChildren.some((child, i) => child !== tree.children[i]);

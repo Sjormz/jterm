@@ -17,18 +17,44 @@ import { ThemeName, applyCssTheme, getTheme } from './themes';
 import { KeybindingsProvider, useKeybindings } from './KeybindingsContext';
 import { KeybindingAction } from './keybindings';
 
+function createTabRoot(type: 'local' | 'ssh'): PaneNode {
+  return {
+    id: genId('split'),
+    type: 'split',
+    direction: 'vertical',
+    children: [createLeaf(type)],
+    sizes: [1],
+  };
+}
+
+function ensureSplitRoot(root: PaneNode): PaneNode {
+  if (root.type === 'leaf') {
+    return {
+      id: genId('split'),
+      type: 'split',
+      direction: 'vertical',
+      children: [root],
+      sizes: [1],
+    };
+  }
+  return root;
+}
+
 function AppInner() {
   const [tabs, setTabs] = useState<TabInfo[]>([{
     id: genId('tab'),
     title: 'terminal',
     type: 'local',
-    root: createLeaf('local'),
+    root: createTabRoot('local'),
   }]);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarSection, setSidebarSection] = useState<'files' | 'ssh' | 'git' | 'settings'>('files');
   const [sshSessions, setSshSessions] = useState<SessionInfo[]>([]);
   const [activeTerminals, setActiveTerminals] = useState<Set<string>>(new Set());
+  const liveTerminalIdsRef = useRef<Set<string>>(new Set());
   const [paletteVisible, setPaletteVisible] = useState(false);
 
   // === CWD tracking ===
@@ -116,7 +142,8 @@ function AppInner() {
 
   // Track terminal registrations
   const handleTerminalReady = useCallback((termId: string) => {
-    setActiveTerminals((prev) => new Set(prev).add(termId));
+    liveTerminalIdsRef.current.add(termId);
+    setActiveTerminals(new Set(liveTerminalIdsRef.current));
   }, []);
 
   // Called by TerminalPane when the shell reports a new cwd (via OSC 7
@@ -139,12 +166,14 @@ function AppInner() {
   // Called when a TerminalPane unmounts
   const handleTerminalRemoved = useCallback(
     (termId: string) => {
-      setActiveTerminals((prev) => {
-        const next = new Set(prev);
-        next.delete(termId);
-        return next;
-      });
-      window.janet.terminalDestroy({ id: termId }).catch(() => {});
+      window.setTimeout(() => {
+        const stillRendered = tabsRef.current.some((tab) => getAllLeafIds(tab.root).includes(termId));
+        if (stillRendered) return;
+
+        liveTerminalIdsRef.current.delete(termId);
+        setActiveTerminals(new Set(liveTerminalIdsRef.current));
+        window.janet.terminalDestroy({ id: termId }).catch(() => {});
+      }, 0);
     },
     [],
   );
@@ -158,7 +187,7 @@ function AppInner() {
         title: type === 'local' ? `terminal ${tabs.length + 1}` : `ssh-${sshSessionId?.slice(0, 6)}`,
         type,
         sshSessionId,
-        root: createLeaf(type),
+        root: createTabRoot(type),
       };
       setTabs((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
@@ -210,7 +239,7 @@ function AppInner() {
           closeTab(tabId);
           return tab;
         }
-        return { ...tab, root: newRoot };
+        return { ...tab, root: ensureSplitRoot(newRoot) };
       });
     },
     [updateTab, closeTab],
@@ -236,7 +265,7 @@ function AppInner() {
             id: genId('tab'),
             title: 'terminal 1',
             type: 'local',
-            root: createLeaf('local'),
+            root: createTabRoot('local'),
           };
           setActiveTabId(newTab.id);
           return [newTab];
@@ -479,6 +508,7 @@ function AppInner() {
             onCwdChange={handleCwdChange}
             onTerminalFocus={handleTerminalFocus}
             initialCwd={homeDir || undefined}
+            hasSessionForLeaf={(leafId) => liveTerminalIdsRef.current.has(leafId)}
           />
         </div>
       </div>
