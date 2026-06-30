@@ -35,6 +35,14 @@ npm run dev
 
 This starts the Vite dev server for hot-reload, then launches Electron.
 
+## Contributing
+
+Public contributions are welcome. Please see:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) for setup and PR expectations
+- the pull request template for the information reviewers need
+- the issue templates for bugs and feature requests
+
 ## Architecture
 
 ```
