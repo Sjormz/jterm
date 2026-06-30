@@ -52,6 +52,8 @@ interface TerminalPaneProps {
    * so the sidebar has something to show before the first OSC 7 arrives.
    */
   initialCwd?: string;
+  /** True when this termId already has a live PTY/session to reuse. */
+  hasSession?: boolean;
 }
 
 export default function TerminalPane({
@@ -66,6 +68,7 @@ export default function TerminalPane({
   onCwdChange,
   onFocus,
   initialCwd,
+  hasSession,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -164,8 +167,12 @@ export default function TerminalPane({
     term.open(container);
     fitAddon.fit();
 
-    // Create terminal session based on type
-    if (tabType === 'local') {
+    // Create terminal session only when this termId doesn't already have one.
+    // Split operations can remount an existing pane; in that case the PTY must
+    // stay alive and only the new sibling terminal should be created.
+    if (hasSession) {
+      onReady(termId);
+    } else if (tabType === 'local') {
       window.janet.terminalCreate({ id: termId }).then(() => {
         onReady(termId);
       }).catch(console.error);
