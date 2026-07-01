@@ -10,9 +10,19 @@ interface SSHConnection {
   };
   shells: Map<string, ClientChannel>;
   pendingWrites: Map<string, string[]>;
+  /** Handles already returned by createShell(), keyed by termId — lets a
+   * repeat call (e.g. React 18 StrictMode's double mount-effect invoke)
+   * reuse the in-flight/live shell instead of opening a second SSH
+   * channel for the same termId. */
+  shellHandles: Map<string, SSHShellHandle>;
 }
 
 interface SSHShellHandle {
+  /** Registers the single onData forwarder for this shell. Idempotent:
+   * calling this more than once (e.g. StrictMode's double mount-effect
+   * invoke re-running the IPC handler before the first call settles)
+   * replaces rather than adds a listener, so PTY-side output is never
+   * dispatched to two callbacks at once. */
   onData: (cb: (data: string) => void) => void;
   ready: Promise<void>;
 }
@@ -38,6 +48,7 @@ export class SSHManager {
           config: { host: config.host, port: config.port, username: config.username },
           shells: new Map(),
           pendingWrites: new Map(),
+          shellHandles: new Map(),
         });
         resolve();
       });
@@ -67,7 +78,17 @@ export class SSHManager {
     const conn = this.connections.get(sessionId);
     if (!conn) throw new Error(`SSH session ${sessionId} not found`);
 
-    const callbacks: Array<(data: string) => void> = [];
+    // Idempotent by termId — see the `shellHandles` doc comment on
+    // SSHConnection. Without this a repeat createShell() call (StrictMode
+    // double mount, or a stray re-invocation) would open a second SSH
+    // channel and dispatch to a second set of callbacks, doubling any
+    // output that lands before the caller notices and discards the first
+    // handle — the same class of bug as the local-pty duplicate-prompt
+    // issue, just over an SSH channel instead of a local pty.
+    const existingHandle = conn.shellHandles.get(termId);
+    if (existingHandle) return existingHandle;
+
+    let activeCallback: ((data: string) => void) | null = null;
     const pendingChunks: string[] = [];
     let resolveReady: (() => void) | null = null;
     let rejectReady: ((err: Error) => void) | null = null;
@@ -78,14 +99,12 @@ export class SSHManager {
     });
 
     const dispatch = (str: string) => {
-      if (callbacks.length === 0) {
+      if (!activeCallback) {
         pendingChunks.push(str);
         return;
       }
 
-      for (const cb of callbacks) {
-        cb(str);
-      }
+      activeCallback(str);
     };
 
     conn.client.shell({
@@ -111,6 +130,7 @@ export class SSHManager {
       stream.on('close', () => {
         conn.shells.delete(termId);
         conn.pendingWrites.delete(termId);
+        conn.shellHandles.delete(termId);
       });
 
       conn.shells.set(termId, stream);
@@ -126,9 +146,9 @@ export class SSHManager {
       resolveReady?.();
     });
 
-    return {
+    const handle: SSHShellHandle = {
       onData: (cb: (data: string) => void) => {
-        callbacks.push(cb);
+        activeCallback = cb;
         if (pendingChunks.length > 0) {
           for (const chunk of pendingChunks) {
             cb(chunk);
@@ -138,6 +158,8 @@ export class SSHManager {
       },
       ready,
     };
+    conn.shellHandles.set(termId, handle);
+    return handle;
   }
 
   writeShell(termId: string, data: string): void {
@@ -201,6 +223,7 @@ export class SSHManager {
         try { shell.close(); } catch {}
       });
       conn.pendingWrites.clear();
+      conn.shellHandles.clear();
       conn.client.end();
       this.connections.delete(id);
     }

@@ -129,4 +129,71 @@ describe('SSHManager', () => {
 
     expect(stream.write).toHaveBeenCalledWith('ls -la\n');
   });
+
+  it('reuses the same shell (and does not open a second SSH channel) when createShell is called twice for one termId — StrictMode double-mount', async () => {
+    mocks.shellMock.mockImplementation((opts: unknown, cb: (err: Error | undefined, stream?: MockShellStream) => void) => {
+      const stream = new MockShellStream();
+      cb(undefined, stream);
+    });
+
+    mocks.connectMock.mockImplementation(() => {
+      queueMicrotask(() => mocks.lastClient?.emit('ready'));
+    });
+
+    const { SSHManager } = await loadSSHManager();
+    const manager = new SSHManager();
+    await manager.connect('session-3', {
+      host: 'example.com',
+      port: 22,
+      username: 'alice',
+      auth: 'password',
+      password: 'secret',
+    });
+
+    // Simulates React 18 StrictMode's mount -> cleanup -> mount, which
+    // calls the IPC handler (and therefore createShell()) twice for the
+    // same termId before the first call's caller has any chance to react.
+    const first = manager.createShell('session-3', 'term-3', { cols: 80, rows: 24 });
+    const second = manager.createShell('session-3', 'term-3', { cols: 80, rows: 24 });
+
+    expect(mocks.shellMock).toHaveBeenCalledTimes(1);
+    expect(first).toBe(second);
+  });
+
+  it('only ever dispatches to the most recently registered onData callback, even across repeat createShell calls', async () => {
+    let stream: MockShellStream | null = null;
+    mocks.shellMock.mockImplementation((opts: unknown, cb: (err: Error | undefined, s?: MockShellStream) => void) => {
+      stream = new MockShellStream();
+      cb(undefined, stream);
+    });
+
+    mocks.connectMock.mockImplementation(() => {
+      queueMicrotask(() => mocks.lastClient?.emit('ready'));
+    });
+
+    const { SSHManager } = await loadSSHManager();
+    const manager = new SSHManager();
+    await manager.connect('session-4', {
+      host: 'example.com',
+      port: 22,
+      username: 'alice',
+      auth: 'password',
+      password: 'secret',
+    });
+
+    const receivedA: string[] = [];
+    const receivedB: string[] = [];
+    const handleA = manager.createShell('session-4', 'term-4', { cols: 80, rows: 24 });
+    handleA.onData((d) => receivedA.push(d));
+    const handleB = manager.createShell('session-4', 'term-4', { cols: 80, rows: 24 });
+    handleB.onData((d) => receivedB.push(d));
+
+    await handleB.ready;
+    stream!.emit('data', Buffer.from('PS C:\\Users\\pckpr> '));
+
+    // Only the most recently registered forwarder receives data — output
+    // is never dispatched to two callbacks for the one termId at once.
+    expect(receivedA).toEqual([]);
+    expect(receivedB).toEqual(['PS C:\\Users\\pckpr> ']);
+  });
 });
