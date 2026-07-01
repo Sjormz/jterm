@@ -2,16 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
-/**
- * Run a list of cleanup entries. Each entry is either a function (called
- * with no args) or an object with a `.dispose()` method (called). Errors
- * are swallowed because a failing cleanup shouldn't mask the real reason
- * the component is unmounting.
- *
- * Exported for testing. We can't easily test the TerminalPane unmount
- * path because it requires a real xterm.js instance, but the cleanup
- * contract itself is simple and worth pinning down.
- */
 export function runCleanup(entries: unknown[]): void {
   for (const entry of entries) {
     try {
@@ -43,16 +33,9 @@ interface TerminalPaneProps {
   onRemoved: (termId: string) => void;
   themeName?: string;
   fontSize?: number;
-  /** Called when this terminal reports a new working directory (via OSC 7). */
   onCwdChange?: (termId: string, cwd: string) => void;
-  /** Called when this terminal gains focus (so App can route cwd lookups here). */
   onFocus?: (termId: string) => void;
-  /**
-   * The initial working directory of this terminal. Used as a fallback
-   * so the sidebar has something to show before the first OSC 7 arrives.
-   */
   initialCwd?: string;
-  /** True when this termId already has a live PTY/session to reuse. */
   hasSession?: boolean;
 }
 
@@ -270,7 +253,6 @@ export default function TerminalPane({
     term.loadAddon(webLinksAddon);
     term.loadAddon(searchAddon);
 
-    // Track search results
     searchAddon.onDidChangeResults((results) => {
       setSearchResults(results);
     });
@@ -278,9 +260,6 @@ export default function TerminalPane({
     term.open(container);
     fitAddon.fit();
 
-    // Create terminal session only when this termId doesn't already have one.
-    // Split operations can remount an existing pane; in that case the PTY must
-    // stay alive and only the new sibling terminal should be created.
     if (hasSession) {
       onReady(termId);
     } else if (tabType === 'local') {
@@ -300,7 +279,6 @@ export default function TerminalPane({
       }).catch(console.error);
     }
 
-    // Terminal input -> PTY
     const disposable = term.onData((data) => {
       if (tabType === 'local') {
         window.janet.terminalWrite({ id: termId, data });
@@ -310,16 +288,12 @@ export default function TerminalPane({
     });
     cleanupRef.current.push(() => disposable.dispose());
 
-    // PTY output -> Terminal  (handled below with OSC 7 stripping)
-
-    // Handle resize via ResizeObserver
     const resizeObserver = new ResizeObserver(() => {
       try { fitAddon.fit(); } catch {}
     });
     resizeObserver.observe(container);
     cleanupRef.current.push(() => resizeObserver.disconnect());
 
-    // Debounced resize notification to main process
     let resizeTimer: any;
     const notifyResize = () => {
       clearTimeout(resizeTimer);
@@ -340,21 +314,13 @@ export default function TerminalPane({
 
     setTimeout(notifyResize, 100);
 
-    // Listen for window resize
     window.addEventListener('resize', notifyResize);
     cleanupRef.current.push(() => window.removeEventListener('resize', notifyResize));
 
-    // Focus terminal on click
     const clickListener = () => term.focus();
     container.addEventListener('click', clickListener);
     cleanupRef.current.push(() => container.removeEventListener('click', clickListener));
 
-    // Track focus so App can route sidebar cwd to the currently-focused
-    // terminal. xterm.js doesn't expose an onFocus event on the Terminal
-    // class — we listen to DOM focus events on the container instead.
-    // xterm renders a hidden <textarea> inside the container; the
-    // focusin event fires on the container when the textarea (or any
-    // child) gains focus.
     const focusListener = () => onFocus?.(termId);
     container.addEventListener('focusin', focusListener);
     cleanupRef.current.push(() => container.removeEventListener('focusin', focusListener));
@@ -363,25 +329,9 @@ export default function TerminalPane({
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
 
-    // OSC 7 cwd tracking. xterm.js has a built-in OSC parser
-    // (term.parser) that detects sequences for us, reassembles them
-    // across PTY chunk boundaries, and strips them from the visible
-    // output. We just register a handler for OSC 7 and react to the
-    // payload.
-    //
-    // Reference:
-    //   https://xtermjs.org/docs/api/terminal/interfaces/iparser/#registeroschandler
-    //
-    // The "initialCwd" prop is what node-pty was launched with
-    // (typically the user's home dir). We report it eagerly so the
-    // sidebar has something to show before the first prompt emits an
-    // OSC 7 sequence.
     let lastReportedCwd: string | null = initialCwd || null;
     if (initialCwd) onCwdChange?.(termId, initialCwd);
 
-    // Debounce so a burst of OSC 7 sequences (e.g. a script that cd's
-    // many times, or a tab completion that paints a path) doesn't
-    // thrash the file tree.
     let cwdDebounce: ReturnType<typeof setTimeout> | null = null;
     const reportCwd = (newCwd: string) => {
       if (newCwd === lastReportedCwd) return;
@@ -395,15 +345,13 @@ export default function TerminalPane({
     const oscDisposable = term.parser.registerOscHandler(7, (data) => {
       const path = fileUrlToPath(data);
       if (path) reportCwd(path);
-      return true; // consumed — don't let xterm render the payload
+      return true;
     });
     cleanupRef.current.push(() => oscDisposable.dispose());
     cleanupRef.current.push(() => {
       if (cwdDebounce) clearTimeout(cwdDebounce);
     });
 
-    // PTY output -> xterm (no longer needs to strip OSC 7 — xterm
-    // consumes it before it ever reaches the visible buffer).
     const cleanupListener = window.janet.onTerminalData(({ id, data }) => {
       if (id === termId) {
         if (tabType === 'ssh') {
@@ -424,11 +372,8 @@ export default function TerminalPane({
       disposeTimer: null,
     });
 
-    // Intercept keyboard shortcuts before xterm processes them
-
     term.attachCustomKeyEventHandler((e) => {
       const currentBindings = kbBindingsRef.current;
-      // Check search-toggle shortcut (default Ctrl+F)
       if (matchesShortcut(e, currentBindings['search-toggle'])) {
         e.preventDefault();
         setSearchVisible((v) => !v);
@@ -451,7 +396,6 @@ export default function TerminalPane({
     };
   }, [termId, tabType, sshSessionId, initialCwd, onReady, onRemoved, onFocus, onCwdChange]);
 
-  // Update xterm theme when themeName changes
   useEffect(() => {
     if (termRef.current && themeName) {
       const themeDef = getTheme(themeName as ThemeName);
@@ -459,18 +403,15 @@ export default function TerminalPane({
     }
   }, [themeName]);
 
-  // Update xterm font size when fontSize changes
   useEffect(() => {
     if (termRef.current && fontSize) {
       termRef.current.options.fontSize = fontSize;
-      // Re-fit after font size change
       setTimeout(() => {
         try { fitAddonRef.current?.fit(); } catch {}
       }, 10);
     }
   }, [fontSize]);
 
-  // Re-fit when the parent container becomes visible
   useEffect(() => {
     const timer = setTimeout(() => {
       if (fitAddonRef.current) {
