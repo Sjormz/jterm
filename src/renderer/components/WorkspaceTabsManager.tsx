@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { SavedSSHProfile, WorkspaceTabPreset } from '../types';
+import { WorkspaceTabPreset, SavedSSHProfile } from '../types';
 import { PlusIcon, XCloseIcon, TerminalTabIcon, PlugIcon } from '../icons';
+
+function sshProfileLabel(profile: SavedSSHProfile) {
+  return `${profile.username ? `${profile.username}@` : ''}${profile.host}:${profile.port}`;
+}
 
 interface WorkspaceTabsManagerProps {
   presets: WorkspaceTabPreset[];
@@ -147,7 +151,7 @@ export default function WorkspaceTabsManager({
                 <option value="">Select saved SSH</option>
                 {sshProfiles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
-                    {profile.username}@{profile.host}:{profile.port}
+                    {sshProfileLabel(profile)}
                   </option>
                 ))}
               </select>
@@ -176,7 +180,7 @@ export default function WorkspaceTabsManager({
         ) : presets.map((preset) => {
           const sshProfile = sshProfiles.find((profile) => profile.id === preset.sshProfileId);
           const subtitle = preset.type === 'ssh'
-            ? sshProfile ? `${sshProfile.username}@${sshProfile.host}:${sshProfile.port}` : 'Missing SSH profile'
+            ? sshProfile ? sshProfileLabel(sshProfile) : 'Missing SSH profile'
             : preset.cwd || 'Home directory';
 
           return (

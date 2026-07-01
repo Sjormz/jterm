@@ -36,19 +36,27 @@ vi.mock('../renderer/components/TerminalPane', async () => {
     termId,
     hasSession,
     initialCwd,
+    tabType,
+    sshSessionId,
     onReady,
     onRemoved,
   }: {
     termId: string;
     hasSession?: boolean;
     initialCwd?: string;
+    tabType?: 'local' | 'ssh';
+    sshSessionId?: string;
     onReady?: (id: string) => void;
     onRemoved?: (id: string) => void;
   }) {
     React.useEffect(() => {
       mountedTermIds.push(termId);
       if (!hasSession) {
-        window.janet.terminalCreate({ id: termId, cwd: initialCwd });
+        if (tabType === 'ssh' && sshSessionId) {
+          window.janet.sshCreateShell({ id: sshSessionId, termId, cols: 80, rows: 24 });
+        } else {
+          window.janet.terminalCreate({ id: termId, cwd: initialCwd });
+        }
       }
       onReady?.(termId);
       return () => {
@@ -59,7 +67,7 @@ vi.mock('../renderer/components/TerminalPane', async () => {
     return <div data-testid={`terminal-${termId}`}>{termId}</div>;
   }
 
-  return { default: MockTerminalPane };
+  return { default: MockTerminalPane, disposeCachedTerminal: vi.fn() };
 });
 
 beforeEach(() => {
@@ -73,9 +81,11 @@ beforeEach(() => {
     terminalWrite: vi.fn(),
     terminalResize: vi.fn(),
     onTerminalData: vi.fn(() => ({ dispose: vi.fn() })),
+    sshConnect: vi.fn().mockResolvedValue({ connected: true }),
     sshCreateShell: vi.fn().mockResolvedValue(undefined),
     sshWriteShell: vi.fn(),
     sshResizeShell: vi.fn(),
+    sshDisconnect: vi.fn().mockResolvedValue(undefined),
     checkForUpdates: vi.fn().mockResolvedValue(undefined),
   };
 });
@@ -178,6 +188,63 @@ describe('split panes in the app', () => {
       (call: any[]) => call[0]?.cwd === 'C:/repo',
     );
     expect(projectCreates).toHaveLength(2);
+  });
+
+  it('restores a saved SSH tab and binds a single shell (regression: blank pane on refresh)', async () => {
+    const sshProfileId = 'pckpr@box.local:22:password';
+    window.janet.getSettings = vi.fn().mockResolvedValue({
+      keybindings: {},
+      workspaceTabs: [],
+      sshProfiles: [{
+        id: sshProfileId,
+        host: 'box.local',
+        port: 22,
+        username: 'pckpr',
+        auth: 'password',
+        password: 'secret',
+      }],
+      session: {
+        tabs: [
+          {
+            id: 'ssh-1',
+            title: 'box',
+            type: 'ssh',
+            sshProfileId,
+            root: { type: 'leaf' },
+          },
+        ],
+        activeTabId: 'ssh-1',
+        sidebarOpen: true,
+        tabsOpen: true,
+        sidebarSection: 'files',
+      },
+    });
+
+    render(<App />);
+
+    // The SSH tab should mount a single terminal...
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/terminal-/)).toHaveLength(1);
+    });
+
+    // ...and `sshCreateShell` should be called exactly once with a
+    // session id that matches the one passed to `sshConnect`. This is
+    // the regression: previously the TerminalPane would mount with
+    // sshSessionId=undefined (creating a dangling xterm with no
+    // shell), then the reconnect effect would patch in an id, the
+    // mount effect would re-run, dispose the original xterm, create
+    // a new one, and call sshCreateShell again. The user saw a blank
+    // pane — sometimes permanently if data arrived in between.
+    await waitFor(() => {
+      expect(window.janet.sshCreateShell).toHaveBeenCalledTimes(1);
+    });
+    expect(window.janet.sshConnect).toHaveBeenCalledTimes(1);
+
+    const connectArgs = (window.janet.sshConnect as any).mock.calls[0][0] as any;
+    const shellArgs = (window.janet.sshCreateShell as any).mock.calls[0][0] as any;
+    expect(connectArgs.id).toBeTruthy();
+    expect(shellArgs.id).toBe(connectArgs.id);
+    expect(shellArgs.id).toBe(connectArgs.id);
   });
 
   it('persists the open tabs to settings after a tab change', async () => {

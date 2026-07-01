@@ -8,8 +8,26 @@ interface SSHManagerProps {
   onProfilesChange: (profiles: SavedSSHProfile[]) => void;
 }
 
-function profileId(host: string, port: number, username: string, auth: 'password' | 'key') {
-  return `${username}@${host}:${port}:${auth}`.toLowerCase();
+function profileId(host: string, port: number, username: string | undefined, auth: 'password' | 'key') {
+  const userPrefix = username ? `${username}@` : '';
+  return `${userPrefix}${host}:${port}:${auth}`.toLowerCase();
+}
+
+function connectionLabel(profile: SavedSSHProfile) {
+  return `${profile.username ? `${profile.username}@` : ''}${profile.host}:${profile.port}`;
+}
+
+function usernamePayload(username: string) {
+  const trimmed = username.trim();
+  return trimmed ? { username: trimmed } : {};
+}
+
+function passwordPayload(auth: 'password' | 'key', password: string) {
+  return auth === 'password' && password ? { password } : {};
+}
+
+function privateKeyPayload(auth: 'password' | 'key', privateKey: string) {
+  return auth === 'key' && privateKey ? { privateKey } : {};
 }
 
 export default function SSHManager({
@@ -44,7 +62,9 @@ export default function SSHManager({
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!host || !username) return;
+    const trimmedHost = host.trim();
+    const trimmedUsername = username.trim();
+    if (!trimmedHost) return;
     setConnecting(true);
     setError(null);
 
@@ -54,24 +74,24 @@ export default function SSHManager({
     try {
       await window.janet.sshConnect({
         id: sessionId,
-        host,
+        host: trimmedHost,
         port: parsedPort,
-        username,
+        ...usernamePayload(trimmedUsername),
         auth,
-        password: auth === 'password' ? password : undefined,
-        privateKey: auth === 'key' ? privateKey : undefined,
+        ...passwordPayload(auth, password),
+        ...privateKeyPayload(auth, privateKey),
       });
 
       saveProfile({
-        id: profileId(host, parsedPort, username, auth),
-        host,
+        id: profileId(trimmedHost, parsedPort, trimmedUsername || undefined, auth),
+        host: trimmedHost,
         port: parsedPort,
-        username,
+        username: trimmedUsername || undefined,
         auth,
-        password: auth === 'password' ? password : undefined,
-        privateKey: auth === 'key' ? privateKey : undefined,
+        password: auth === 'password' && password ? password : undefined,
+        privateKey: auth === 'key' && privateKey ? privateKey : undefined,
       });
-      onConnected({ id: sessionId, host, port: parsedPort, username });
+      onConnected({ id: sessionId, host: trimmedHost, port: parsedPort, ...(trimmedUsername ? { username: trimmedUsername } : {}) });
       setShowForm(false);
       resetForm();
     } catch (err: any) {
@@ -84,7 +104,7 @@ export default function SSHManager({
   const editProfile = (profile: SavedSSHProfile) => {
     setHost(profile.host);
     setPort(String(profile.port));
-    setUsername(profile.username);
+    setUsername(profile.username ?? '');
     setAuth(profile.auth);
     setPassword(profile.password ?? '');
     setPrivateKey(profile.privateKey ?? '');
@@ -102,16 +122,16 @@ export default function SSHManager({
         id: sessionId,
         host: profile.host,
         port: profile.port,
-        username: profile.username,
+        ...(profile.username ? { username: profile.username } : {}),
         auth: profile.auth,
-        password: profile.auth === 'password' ? profile.password : undefined,
-        privateKey: profile.auth === 'key' ? profile.privateKey : undefined,
+        ...(profile.auth === 'password' && profile.password ? { password: profile.password } : {}),
+        ...(profile.auth === 'key' && profile.privateKey ? { privateKey: profile.privateKey } : {}),
       });
       onConnected({
         id: sessionId,
         host: profile.host,
         port: profile.port,
-        username: profile.username,
+        ...(profile.username ? { username: profile.username } : {}),
       });
     } catch (err: any) {
       setError(err.message || 'Connection failed');
@@ -225,8 +245,8 @@ export default function SSHManager({
                 <div className="session-info">
                   <ServerIcon size="md" className="session-icon saved" />
                   <div className="session-details">
-                    <span className="session-user">{profile.username}</span>
-                    <span className="session-host">@{profile.host}:{profile.port}</span>
+                    <span className="session-user">{profile.username || profile.host}</span>
+                    <span className="session-host">{profile.username ? `@${profile.host}:${profile.port}` : `:${profile.port}`}</span>
                   </div>
                 </div>
                 <div className="session-actions">
@@ -235,14 +255,14 @@ export default function SSHManager({
                     onClick={() => connectProfile(profile)}
                     disabled={connecting}
                     title="Connect"
-                    aria-label={`Connect to ${profile.username}@${profile.host}`}
+                    aria-label={`Connect to ${connectionLabel(profile)}`}
                   >
                     <PlugIcon size="sm" />
                   </button>
                   <select
                     className="session-action-select"
                     value=""
-                    aria-label={`Actions for ${profile.username}@${profile.host}`}
+                    aria-label={`Actions for ${connectionLabel(profile)}`}
                     onChange={(e) => {
                       handleProfileAction(profile, e.target.value);
                       e.currentTarget.value = '';

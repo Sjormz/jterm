@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import Titlebar from './components/Titlebar';
 import VerticalTabBar from './components/VerticalTabBar';
 import SplitPane from './components/SplitPane';
+import { disposeCachedTerminal } from './components/TerminalPane';
 import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
 import CommandPalette, { CommandAction } from './components/CommandPalette';
@@ -120,6 +121,17 @@ function AppInner() {
                 type: saved.type,
                 cwd: saved.cwd,
                 sshProfileId: saved.sshProfileId,
+                // For SSH tabs, pre-allocate a session id so the
+                // TerminalPane mounts with a stable `sshSessionId` prop.
+                // Otherwise the pane would mount with `undefined`,
+                // create a dangling xterm with no shell bound, and
+                // then have to be torn down + rebuilt when the
+                // reconnect effect eventually fills in the id —
+                // leaving the user with a blank pane for a beat (or
+                // permanently, if any data arrived in between).
+                sshSessionId: saved.type === 'ssh' && saved.sshProfileId
+                  ? `ssh-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+                  : undefined,
                 root: tree,
               };
               restored.push(tab);
@@ -149,15 +161,18 @@ function AppInner() {
   }, []);
 
   // Reconnect SSH tabs that were restored from the saved session.
-  // The tree is rebuilt with fresh leaf ids during restore, but the SSH
-  // transport is not — the previous connection is gone, so we kick off
-  // a fresh `ssh:connect` and rewire the live session id into the tab.
+  // The tree is rebuilt with fresh leaf ids during restore, and the
+  // session id is pre-allocated so the TerminalPane mounts with a
+  // stable `sshSessionId` prop. The transport is still dead though
+  // (it's a fresh app start) — so this effect kicks off `ssh:connect`
+  // on the pre-allocated id, registers the session for the sidebar
+  // status, and surfaces any connect error to the user.
   useEffect(() => {
     if (!sessionRestoredRef.current) return;
     if (tabsRef.current.length === 0) return;
 
     const reconnectable = tabsRef.current.filter(
-      (tab) => tab.type === 'ssh' && !tab.sshSessionId && tab.sshProfileId,
+      (tab) => tab.type === 'ssh' && tab.sshSessionId && tab.sshProfileId,
     );
     if (reconnectable.length === 0) return;
 
@@ -167,16 +182,18 @@ function AppInner() {
         // Profile was deleted — demote the tab to a plain local tab so
         // the user isn't stuck staring at a dead "Reconnect" panel.
         setTabs((prev) => prev.map((existing) =>
-          existing.id === tab.id ? { ...existing, type: 'local' as const, sshProfileId: undefined } : existing,
+          existing.id === tab.id
+            ? { ...existing, type: 'local' as const, sshSessionId: undefined, sshProfileId: undefined }
+            : existing,
         ));
         continue;
       }
-      const sessionId = `ssh-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const sessionId = tab.sshSessionId!;
       window.janet.sshConnect({
         id: sessionId,
         host: profile.host,
         port: profile.port,
-        username: profile.username,
+        ...(profile.username ? { username: profile.username } : {}),
         auth: profile.auth,
         password: profile.auth === 'password' ? profile.password : undefined,
         privateKey: profile.auth === 'key' ? profile.privateKey : undefined,
@@ -185,16 +202,20 @@ function AppInner() {
           id: sessionId,
           host: profile.host,
           port: profile.port,
-          username: profile.username,
+          ...(profile.username ? { username: profile.username } : {}),
         };
         setSshSessions((prev) => prev.some((s) => s.id === sessionId) ? prev : [...prev, session]);
-        setTabs((prev) => prev.map((existing) =>
-          existing.id === tab.id ? { ...existing, sshSessionId: sessionId } : existing,
-        ));
       }).catch((err) => {
         console.error('Failed to reconnect saved SSH tab:', err);
+        // Drop the session id so the TerminalPane's error path (or
+        // user's manual retry) can re-allocate a fresh one if they
+        // choose to recover. Demote to local so the user at least
+        // sees content (a local shell) rather than a permanently
+        // blank pane with a dead SSH banner.
         setTabs((prev) => prev.map((existing) =>
-          existing.id === tab.id ? { ...existing, type: 'local' as const, sshProfileId: undefined } : existing,
+          existing.id === tab.id
+            ? { ...existing, type: 'local' as const, sshSessionId: undefined, sshProfileId: undefined }
+            : existing,
         ));
       });
     }
@@ -299,6 +320,7 @@ function AppInner() {
 
         liveTerminalIdsRef.current.delete(termId);
         setActiveTerminals(new Set(liveTerminalIdsRef.current));
+        disposeCachedTerminal(termId);
         window.janet.terminalDestroy({ id: termId }).catch(() => {});
       }, 0);
     },
@@ -425,7 +447,7 @@ function AppInner() {
           id: tab.sshSessionId,
           host: profile.host,
           port: profile.port,
-          username: profile.username,
+          ...(profile.username ? { username: profile.username } : {}),
           auth: profile.auth,
           password: profile.auth === 'password' ? profile.password : undefined,
           privateKey: profile.auth === 'key' ? profile.privateKey : undefined,
@@ -474,7 +496,7 @@ function AppInner() {
         id: sessionId,
         host: profile.host,
         port: profile.port,
-        username: profile.username,
+        ...(profile.username ? { username: profile.username } : {}),
         auth: profile.auth,
         password: profile.auth === 'password' ? profile.password : undefined,
         privateKey: profile.auth === 'key' ? profile.privateKey : undefined,
@@ -483,7 +505,7 @@ function AppInner() {
         id: sessionId,
         host: profile.host,
         port: profile.port,
-        username: profile.username,
+        ...(profile.username ? { username: profile.username } : {}),
       };
       setSshSessions((prev) => [...prev, session]);
       const tab = createTabFromPreset(preset, sessionId);

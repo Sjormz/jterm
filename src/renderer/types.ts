@@ -28,14 +28,14 @@ export interface SessionInfo {
   id: string;
   host: string;
   port: number;
-  username: string;
+  username?: string;
 }
 
 export interface SavedSSHProfile {
   id: string;
   host: string;
   port: number;
-  username: string;
+  username?: string;
   auth: 'password' | 'key';
   password?: string;
   privateKey?: string;

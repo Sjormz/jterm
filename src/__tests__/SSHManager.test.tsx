@@ -72,6 +72,41 @@ describe('SSHManager', () => {
     });
   });
 
+  it('allows host-only SSH connections like ssh terminal.shop', async () => {
+    const onConnected = vi.fn();
+    const onProfilesChange = vi.fn();
+    renderSSHManager({ onConnected, onProfilesChange });
+
+    fireEvent.click(screen.getByRole('button', { name: /new connection/i }));
+    fireEvent.change(screen.getByPlaceholderText(/host/i), { target: { value: 'terminal.shop' } });
+    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }));
+
+    await waitFor(() => {
+      expect(sshConnect).toHaveBeenCalledWith(expect.objectContaining({
+        host: 'terminal.shop',
+        port: 22,
+        auth: 'password',
+      }));
+      expect(sshConnect.mock.calls[0][0]).not.toHaveProperty('username');
+      expect(onConnected).toHaveBeenCalledWith(expect.objectContaining({
+        host: 'terminal.shop',
+        port: 22,
+      }));
+      expect(onConnected.mock.calls[0][0]).not.toHaveProperty('username');
+      expect(onProfilesChange).toHaveBeenCalledWith([
+        {
+          id: 'terminal.shop:22:password',
+          host: 'terminal.shop',
+          port: 22,
+          username: undefined,
+          auth: 'password',
+          password: undefined,
+          privateKey: undefined,
+        },
+      ]);
+    });
+  });
+
   it('connects saved profiles in one click', async () => {
     const onConnected = vi.fn();
     renderSSHManager({
@@ -101,6 +136,36 @@ describe('SSHManager', () => {
         port: 22,
         username: 'pckpr',
       }));
+    });
+  });
+
+  it('renders and reconnects saved host-only profiles', async () => {
+    const onConnected = vi.fn();
+    renderSSHManager({
+      onConnected,
+      profiles: [{
+        id: 'terminal.shop:22:password',
+        host: 'terminal.shop',
+        port: 22,
+        username: undefined,
+        auth: 'password',
+      }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /connect to terminal\.shop/i }));
+
+    await waitFor(() => {
+      expect(sshConnect).toHaveBeenCalledWith(expect.objectContaining({
+        host: 'terminal.shop',
+        port: 22,
+        auth: 'password',
+      }));
+      expect(sshConnect.mock.calls[0][0]).not.toHaveProperty('username');
+      expect(onConnected).toHaveBeenCalledWith(expect.objectContaining({
+        host: 'terminal.shop',
+        port: 22,
+      }));
+      expect(onConnected.mock.calls[0][0]).not.toHaveProperty('username');
     });
   });
 

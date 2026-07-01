@@ -17,7 +17,6 @@ export function runCleanup(entries: unknown[]): void {
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import SearchOverlay from './SearchOverlay';
-import SSHConnectionNotice from './SSHConnectionNotice';
 import { getTheme, ThemeName } from '../themes';
 import { useKeybindings } from '../KeybindingsContext';
 import { matchesShortcut } from '../keybindings';
@@ -37,24 +36,23 @@ interface TerminalPaneProps {
   onFocus?: (termId: string) => void;
   initialCwd?: string;
   hasSession?: boolean;
-  /**
-   * Called when the user clicks "Retry" on the SSH notice after the
-   * initial shell-open call rejected (or stalled past the timeout).
-   * App re-runs `ssh:createShell` and updates the term's data listener
-   * to wire the new shell's output.
-   */
   onSshRetry?: (termId: string) => void;
 }
 
-const REMOUNT_DISPOSE_DELAY_MS = 250;
-const SSH_STALL_TIMEOUT_MS = 10_000;
+const MIN_SSH_COLS = 120;
+const MIN_SSH_ROWS = 40;
 
-type SshNoticeState =
-  | { kind: 'hidden' }
-  | { kind: 'waiting' }
-  | { kind: 'stalled' }
-  | { kind: 'error'; message: string }
-  | { kind: 'reconnecting' };
+function sshDimensions(dims: { cols: number; rows: number } | undefined | null) {
+  return {
+    cols: Math.max(dims?.cols || 80, MIN_SSH_COLS),
+    rows: Math.max(dims?.rows || 24, MIN_SSH_ROWS),
+  };
+}
+
+function repaintTerminal(term: Terminal, fitAddon: FitAddon): void {
+  try { fitAddon.fit(); } catch {}
+  try { term.refresh(0, Math.max(term.rows - 1, 0)); } catch {}
+}
 
 interface CachedTerminalPane {
   term: Terminal;
@@ -68,7 +66,7 @@ interface CachedTerminalPane {
 
 const terminalPaneCache = new Map<string, CachedTerminalPane>();
 
-function disposeCachedTerminal(termId: string): void {
+export function disposeCachedTerminal(termId: string): void {
   const cached = terminalPaneCache.get(termId);
   if (!cached) return;
   if (cached.disposeTimer) clearTimeout(cached.disposeTimer);
@@ -81,16 +79,17 @@ function disposeCachedTerminal(termId: string): void {
 function scheduleCachedTerminalDispose(termId: string): void {
   const cached = terminalPaneCache.get(termId);
   if (!cached || cached.disposeTimer) return;
-  cached.disposeTimer = setTimeout(() => {
-    disposeCachedTerminal(termId);
-  }, REMOUNT_DISPOSE_DELAY_MS);
+  // A TerminalPane unmount can mean "hidden because another tab is active",
+  // not "closed". Disposing the frontend xterm here drops the visible buffer
+  // while the backend SSH/local session keeps running, so switching back shows
+  // a blank pane until fresh output arrives. App.tsx explicitly disposes the
+  // cache when the leaf is actually removed from the tab tree.
 }
 
 export default function TerminalPane({
   termId,
   tabType,
   sshSessionId,
-  sshSessionLabel,
   onReady,
   onRemoved,
   themeName,
@@ -99,7 +98,6 @@ export default function TerminalPane({
   onFocus,
   initialCwd,
   hasSession,
-  onSshRetry,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -107,23 +105,10 @@ export default function TerminalPane({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const cleanupRef = useRef<(() => void)[]>([]);
-  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState({ resultIndex: 0, resultCount: 0 });
-  // SSH notice state machine. The notice stays hidden until the shell
-  // actually opens (sshCreateShell resolves) — only then do we switch
-  // to `waiting`. A 10s timer without data promotes us to `stalled`,
-  // an IPC rejection jumps to `error`, both of which expose a Retry
-  // button so the user can recover without closing the tab.
-  const [sshNotice, setSshNotice] = useState<SshNoticeState>(() => {
-    if (tabType !== 'ssh') return { kind: 'hidden' };
-    // hasSession=true means a previous mount already opened the shell
-    // and the term is reused from cache — don't flash a notice on
-    // remount if the data listener will fire momentarily.
-    return hasSession ? { kind: 'hidden' } : { kind: 'hidden' };
-  });
   const searchVisibleRef = useRef(false);
   searchVisibleRef.current = searchVisible;
 
@@ -142,37 +127,6 @@ export default function TerminalPane({
     termRef.current?.focus();
   };
 
-  const clearStallTimer = () => {
-    if (stallTimerRef.current) {
-      clearTimeout(stallTimerRef.current);
-      stallTimerRef.current = null;
-    }
-  };
-
-  // Called by the data listener when any chunk of shell output arrives.
-  // First chunk dismisses the visible notice and cancels the stall
-  // timer so we don't promote a healthy connection to "stalled".
-  const onShellOutput = () => {
-    clearStallTimer();
-    setSshNotice({ kind: 'hidden' });
-  };
-
-  // Drive the "stalled" promotion from notice state. Whenever the
-  // notice becomes `waiting` or `reconnecting`, arm a timer that
-  // promotes to `stalled` if no shell output arrives. Any output
-  // (via the data listener) cancels the timer and hides the notice.
-  useEffect(() => {
-    if (sshNotice.kind !== 'waiting' && sshNotice.kind !== 'reconnecting') {
-      clearStallTimer();
-      return;
-    }
-    clearStallTimer();
-    const timer = setTimeout(() => {
-      setSshNotice((prev) => (prev.kind === 'waiting' || prev.kind === 'reconnecting' ? { kind: 'stalled' } : prev));
-    }, SSH_STALL_TIMEOUT_MS);
-    stallTimerRef.current = timer;
-    return () => clearTimeout(timer);
-  }, [sshNotice.kind]);
 
   const doSearch = (query: string, dir: 'next' | 'prev' = 'next') => {
     if (!query || !searchAddonRef.current) {
@@ -209,7 +163,9 @@ export default function TerminalPane({
         term.open(container);
       }
 
-      try { fitAddon.fit(); } catch {}
+      repaintTerminal(term, fitAddon);
+      const repaintTimer = setTimeout(() => repaintTerminal(term, fitAddon), 0);
+      mountCleanup.push(() => clearTimeout(repaintTimer));
 
       const resultsDisposable = searchAddon.onDidChangeResults((results) => {
         setSearchResults(results);
@@ -233,7 +189,7 @@ export default function TerminalPane({
               if (tabType === 'local') {
                 window.janet.terminalResize({ id: termId, cols: dims.cols, rows: dims.rows });
               } else if (tabType === 'ssh') {
-                window.janet.sshResizeShell({ termId, cols: dims.cols, rows: dims.rows });
+                window.janet.sshResizeShell({ termId, ...sshDimensions(dims) });
               }
             }
           } catch {}
@@ -320,37 +276,6 @@ export default function TerminalPane({
     term.open(container);
     fitAddon.fit();
 
-    if (hasSession) {
-      onReady(termId);
-    } else if (tabType === 'local') {
-      window.janet.terminalCreate({ id: termId, cwd: initialCwd }).then(() => {
-        onReady(termId);
-      }).catch(console.error);
-    } else if (tabType === 'ssh' && sshSessionId) {
-      const dims = fitAddon.proposeDimensions();
-      const openShell = window.janet.sshCreateShell({
-        id: sshSessionId,
-        termId,
-        cols: dims?.cols || 80,
-        rows: dims?.rows || 24,
-      });
-      openShell.then(() => {
-        onReady(termId);
-        term.focus();
-        // Shell opened on the server. The dedicated effect below will
-        // arm a stall timer; if a data event arrives first (the
-        // common case), the listener hides the notice.
-        setSshNotice((prev) => (prev.kind === 'hidden' ? { kind: 'waiting' } : prev));
-      }).catch((err: any) => {
-        console.error('Failed to open SSH shell:', err);
-        onReady(termId);
-        setSshNotice({
-          kind: 'error',
-          message: err?.message || 'Failed to open SSH shell. The connection may have dropped.',
-        });
-      });
-    }
-
     const disposable = term.onData((data) => {
       if (tabType === 'local') {
         window.janet.terminalWrite({ id: termId, data });
@@ -359,6 +284,38 @@ export default function TerminalPane({
       }
     });
     cleanupRef.current.push(() => disposable.dispose());
+
+    const cleanupListener = window.janet.onTerminalData(({ id, data }) => {
+      if (id === termId) {
+        term.write(data);
+      }
+    });
+    cleanupRef.current.push(cleanupListener);
+
+    if (tabType === 'ssh' && sshSessionId) {
+      const dims = sshDimensions(fitAddon.proposeDimensions());
+      const openShell = window.janet.sshCreateShell({
+        id: sshSessionId,
+        termId,
+        cols: dims.cols,
+        rows: dims.rows,
+      });
+      openShell.then(() => {
+        onReady(termId);
+        term.focus();
+      }).catch((err: any) => {
+        onReady(termId);
+        const message = err?.message || 'connection may have dropped';
+        term.write('\r\n\x1b[31mSSH shell failed to open: ' + message + '\x1b[0m\r\n');
+      });
+    } else if (hasSession) {
+      onReady(termId);
+    } else if (tabType === 'local') {
+      window.janet.terminalCreate({ id: termId, cwd: initialCwd }).then(() => {
+        onReady(termId);
+      }).catch(console.error);
+    }
+
 
     const resizeObserver = new ResizeObserver(() => {
       try { fitAddon.fit(); } catch {}
@@ -377,7 +334,7 @@ export default function TerminalPane({
             if (tabType === 'local') {
               window.janet.terminalResize({ id: termId, cols: dims.cols, rows: dims.rows });
             } else if (tabType === 'ssh') {
-              window.janet.sshResizeShell({ termId, cols: dims.cols, rows: dims.rows });
+              window.janet.sshResizeShell({ termId, ...sshDimensions(dims) });
             }
           }
         } catch {}
@@ -424,17 +381,6 @@ export default function TerminalPane({
       if (cwdDebounce) clearTimeout(cwdDebounce);
     });
 
-    const cleanupListener = window.janet.onTerminalData(({ id, data }) => {
-      if (id === termId) {
-        if (tabType === 'ssh') {
-          onShellOutput();
-        }
-        term.write(data);
-      }
-    });
-    cleanupRef.current.push(cleanupListener);
-    cleanupRef.current.push(clearStallTimer);
-
     terminalPaneCache.set(termId, {
       term,
       fitAddon,
@@ -461,7 +407,6 @@ export default function TerminalPane({
     });
 
     return () => {
-      clearStallTimer();
       onRemoved(termId);
       scheduleCachedTerminalDispose(termId);
       termRef.current = null;
@@ -515,18 +460,6 @@ export default function TerminalPane({
         onNext={() => doSearch(searchQuery, 'next')}
         onPrev={() => doSearch(searchQuery, 'prev')}
         onClose={closeSearch}
-      />
-      <SSHConnectionNotice
-        state={sshNotice}
-        label={sshSessionLabel}
-        onDismiss={() => {
-          clearStallTimer();
-          setSshNotice({ kind: 'hidden' });
-        }}
-        onRetry={onSshRetry ? () => {
-          setSshNotice({ kind: 'reconnecting' });
-          onSshRetry(termId);
-        } : undefined}
       />
     </div>
   );
