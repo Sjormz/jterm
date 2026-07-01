@@ -19,6 +19,8 @@ export interface TabInfo {
   title: string;
   type: 'local' | 'ssh';
   sshSessionId?: string;
+  sshProfileId?: string;
+  cwd?: string;
   root: PaneNode;
 }
 
@@ -29,6 +31,26 @@ export interface SessionInfo {
   username: string;
 }
 
+export interface SavedSSHProfile {
+  id: string;
+  host: string;
+  port: number;
+  username: string;
+  auth: 'password' | 'key';
+  password?: string;
+  privateKey?: string;
+}
+
+export interface WorkspaceTabPreset {
+  id: string;
+  name: string;
+  type: 'local' | 'ssh';
+  cwd?: string;
+  sshProfileId?: string;
+  terminalCount: number;
+  splitDirection: 'horizontal' | 'vertical';
+}
+
 let _counter = 0;
 export function genId(prefix = 'p'): string {
   return `${prefix}-${++_counter}-${Date.now().toString(36)}`;
@@ -36,6 +58,22 @@ export function genId(prefix = 'p'): string {
 
 export function createLeaf(type: 'local' | 'ssh' = 'local'): TerminalLeaf {
   return { id: genId('term'), type: 'leaf', title: type === 'local' ? 'terminal' : 'ssh' };
+}
+
+export function createPaneRoot(
+  type: 'local' | 'ssh' = 'local',
+  terminalCount = 1,
+  direction: 'horizontal' | 'vertical' = 'vertical',
+): PaneNode {
+  const count = Math.max(1, Math.min(8, Math.floor(terminalCount) || 1));
+  const children = Array.from({ length: count }, () => createLeaf(type));
+  return {
+    id: genId('split'),
+    type: 'split',
+    direction,
+    children,
+    sizes: children.map(() => 1),
+  };
 }
 
 export function splitPane(

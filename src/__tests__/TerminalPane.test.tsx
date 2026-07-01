@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import React from 'react';
 import { KeybindingsProvider } from '../renderer/KeybindingsContext';
 
@@ -46,10 +46,15 @@ const terminalCreate = vi.fn(() => Promise.resolve({ pid: 123 }));
 const terminalResize = vi.fn(() => Promise.resolve());
 const terminalWrite = vi.fn(() => Promise.resolve());
 const terminalDestroy = vi.fn(() => Promise.resolve());
-const sshCreateShell = vi.fn(() => Promise.resolve({ connected: true }));
+let sshCreateShellImpl: () => Promise<unknown> = () => Promise.resolve({ connected: true });
+const sshCreateShell = vi.fn(() => sshCreateShellImpl());
 const sshResizeShell = vi.fn(() => Promise.resolve());
 const sshWriteShell = vi.fn(() => Promise.resolve());
-const onTerminalData = vi.fn(() => vi.fn());
+let terminalDataHandler: ((params: { id: string; data: string }) => void) | null = null;
+const onTerminalData = vi.fn((cb: (params: { id: string; data: string }) => void) => {
+  terminalDataHandler = cb;
+  return () => { terminalDataHandler = null; };
+});
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: MockTerminal,
@@ -71,10 +76,6 @@ vi.mock('../renderer/components/SearchOverlay', () => ({
   default: () => null,
 }));
 
-vi.mock('../renderer/components/SSHConnectionNotice', () => ({
-  default: () => null,
-}));
-
 vi.mock('../renderer/osc7', () => ({
   fileUrlToPath: vi.fn(() => null),
 }));
@@ -88,6 +89,8 @@ beforeEach(() => {
     parent.appendChild(this.element);
   });
   vi.stubGlobal('ResizeObserver', MockResizeObserver as unknown as typeof ResizeObserver);
+  sshCreateShellImpl = () => Promise.resolve({ connected: true });
+  terminalDataHandler = null;
   Object.defineProperty(window, 'janet', {
     configurable: true,
     value: {
@@ -200,5 +203,151 @@ describe('TerminalPane SSH reinitialization', () => {
     expect(MockTerminal.instances[0].dispose).not.toHaveBeenCalled();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+  });
+});
+
+describe('TerminalPane SSH notice', () => {
+  it('does not show the notice until the shell actually opens', async () => {
+    const { default: TerminalPane } = await loadTerminalPane();
+    // sshCreateShell won't resolve until we explicitly resolve it.
+    let resolveShell: (value: unknown) => void = () => {};
+    sshCreateShellImpl = () => new Promise((res) => { resolveShell = res; });
+
+    render(
+      <KeybindingsProvider>
+        <TerminalPane
+          termId="term-ssh"
+          tabType="ssh"
+          sshSessionId="ssh-1"
+          sshSessionLabel="box"
+          onReady={vi.fn()}
+          onRemoved={vi.fn()}
+          themeName="tokyo-night"
+        />
+      </KeybindingsProvider>,
+    );
+
+    // Before sshCreateShell resolves, the notice is hidden.
+    expect(document.querySelector('[data-testid="ssh-terminal-notice"]')).toBeNull();
+
+    // After the shell opens, the notice flips to "waiting".
+    resolveShell({ connected: true });
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="ssh-terminal-notice"]'))
+        ?.toHaveAttribute('data-state', 'waiting');
+    });
+  });
+
+  it('hides the notice as soon as the first chunk of shell output arrives', async () => {
+    const { default: TerminalPane } = await loadTerminalPane();
+
+    render(
+      <KeybindingsProvider>
+        <TerminalPane
+          termId="term-ssh-2"
+          tabType="ssh"
+          sshSessionId="ssh-2"
+          onReady={vi.fn()}
+          onRemoved={vi.fn()}
+          themeName="tokyo-night"
+        />
+      </KeybindingsProvider>,
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="ssh-terminal-notice"]'))
+        ?.toHaveAttribute('data-state', 'waiting');
+    });
+
+    // Simulate the SSH server sending the first prompt byte.
+    expect(terminalDataHandler).toBeTruthy();
+    terminalDataHandler!({ id: 'term-ssh-2', data: '$ ' });
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="ssh-terminal-notice"]')).toBeNull();
+    });
+  });
+
+  it('shows an error state with a retry button when sshCreateShell rejects', async () => {
+    const { default: TerminalPane } = await loadTerminalPane();
+    const onSshRetry = vi.fn();
+    sshCreateShellImpl = () => Promise.reject(new Error('connect ECONNREFUSED 127.0.0.1:22'));
+
+    render(
+      <KeybindingsProvider>
+        <TerminalPane
+          termId="term-ssh-3"
+          tabType="ssh"
+          sshSessionId="ssh-3"
+          onReady={vi.fn()}
+          onRemoved={vi.fn()}
+          onSshRetry={onSshRetry}
+          themeName="tokyo-night"
+        />
+      </KeybindingsProvider>,
+    );
+
+    await waitFor(() => {
+      const el = document.querySelector('[data-testid="ssh-terminal-notice"]');
+      expect(el).toHaveAttribute('data-state', 'error');
+      expect(el?.textContent).toContain('connect ECONNREFUSED 127.0.0.1:22');
+    });
+
+    fireEvent.click(document.querySelector('[data-testid="ssh-notice-retry"]')!);
+    expect(onSshRetry).toHaveBeenCalledWith('term-ssh-3');
+  });
+
+  it('allows the user to dismiss the notice manually', async () => {
+    const { default: TerminalPane } = await loadTerminalPane();
+
+    render(
+      <KeybindingsProvider>
+        <TerminalPane
+          termId="term-ssh-4"
+          tabType="ssh"
+          sshSessionId="ssh-4"
+          onReady={vi.fn()}
+          onRemoved={vi.fn()}
+          themeName="tokyo-night"
+        />
+      </KeybindingsProvider>,
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="ssh-terminal-notice"]'))
+        ?.toHaveAttribute('data-state', 'waiting');
+    });
+
+    fireEvent.click(document.querySelector('[data-testid="ssh-notice-dismiss"]')!);
+    expect(document.querySelector('[data-testid="ssh-terminal-notice"]')).toBeNull();
+  });
+
+  it('promotes "waiting" to "stalled" after the timeout when no output arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      const { default: TerminalPane } = await loadTerminalPane();
+      render(
+        <KeybindingsProvider>
+          <TerminalPane
+            termId="term-ssh-5"
+            tabType="ssh"
+            sshSessionId="ssh-5"
+            onReady={vi.fn()}
+            onRemoved={vi.fn()}
+            onSshRetry={vi.fn()}
+            themeName="tokyo-night"
+          />
+        </KeybindingsProvider>,
+      );
+
+      // Let the SSH shell open and the notice transition to "waiting",
+      // then push past the stall timeout in one go.
+      await vi.advanceTimersByTimeAsync(10_500);
+
+      const notice = document.querySelector('[data-testid="ssh-terminal-notice"]');
+      expect(notice).toHaveAttribute('data-state', 'stalled');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
