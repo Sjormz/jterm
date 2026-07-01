@@ -6,12 +6,38 @@ import { buildShellInit } from './shell-init';
 interface TerminalInstance {
   pty: IPty;
   id: string;
+  /** True once we've wired the single onData forwarder for this pty. */
+  wired: boolean;
 }
 
 export class TerminalManager {
   private terminals: Map<string, TerminalInstance> = new Map();
 
-  create(id: string, cwd?: string, shell?: string): IPty {
+  /**
+   * Create (or reuse) the pty for `id`, and register `onData` as its
+   * single output forwarder.
+   *
+   * Both parts of this are idempotent by id. React 18 StrictMode
+   * double-invokes mount effects in dev (mount -> cleanup -> mount)
+   * before the first `terminal:create` IPC round-trip resolves, so this
+   * can legitimately be called twice in quick succession for the same
+   * termId. Without these guards we'd either spawn a second real shell
+   * process, or attach a second onData forwarder to the same already-live
+   * pty — either way the renderer ends up with two streams of output
+   * landing on one xterm instance, which is what produced the "PS
+   * C:\...> PS C:\...>" duplicate-prompt bug. Reusing the existing pty
+   * and only ever wiring onData once fixes both.
+   */
+  create(id: string, cwd?: string, shell?: string, onData?: (data: string) => void): IPty {
+    const existing = this.terminals.get(id);
+    if (existing) {
+      if (onData && !existing.wired) {
+        existing.wired = true;
+        existing.pty.onData(onData);
+      }
+      return existing.pty;
+    }
+
     const defaultShell = shell || (process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash');
     const defaultCwd = cwd || os.homedir();
 
@@ -49,7 +75,8 @@ export class TerminalManager {
       },
     });
 
-    this.terminals.set(id, { pty, id });
+    this.terminals.set(id, { pty, id, wired: !!onData });
+    if (onData) pty.onData(onData);
     return pty;
   }
 

@@ -100,8 +100,7 @@ app.on('window-all-closed', () => {
 function registerIpcHandlers() {
   // === Terminal IPC ===
   ipcMain.handle('terminal:create', (event, { id, cwd, shell }) => {
-    const pty = terminalManager.create(id, cwd, shell);
-    pty.onData((data) => {
+    const pty = terminalManager.create(id, cwd, shell, (data) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('terminal:onData', { id, data });
       }
